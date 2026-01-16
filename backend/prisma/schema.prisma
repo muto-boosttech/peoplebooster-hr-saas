@@ -1,0 +1,767 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ========================================
+// Enums
+// ========================================
+
+// User related enums
+enum UserRole {
+  SYSTEM_ADMIN
+  COMPANY_ADMIN
+  COMPANY_USER
+  GENERAL_USER
+}
+
+enum SubUserPermission {
+  VIEW_ONLY
+  EDIT
+  FULL
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  PREFER_NOT_TO_SAY
+}
+
+// Diagnosis related enums
+enum QuestionCategory {
+  EXTRAVERSION
+  OPENNESS
+  AGREEABLENESS
+  CONSCIENTIOUSNESS
+  NEUROTICISM
+  THINKING
+  BEHAVIOR
+}
+
+enum ReliabilityStatus {
+  RELIABLE
+  UNRELIABLE
+  NEEDS_REVIEW
+}
+
+enum StressToleranceLevel {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum PotentialGrade {
+  A
+  B
+  C
+  D
+}
+
+// External diagnosis enums
+enum ExternalDiagnosisType {
+  MBTI
+  ANIMAL_FORTUNE
+}
+
+// BrushUp related enums
+enum BrushUpTriggerType {
+  INITIAL
+  MBTI_ADDED
+  ANIMAL_ADDED
+  INTERVIEW_COMMENT
+  MANUAL
+}
+
+// ATS related enums
+enum CandidateStatus {
+  UNTOUCHED
+  IN_PROGRESS
+  COMPLETED
+  DOCUMENT_SCREENING
+  FIRST_INTERVIEW
+  SECOND_INTERVIEW
+  FINAL_INTERVIEW
+  OFFER
+  HIRED
+  REJECTED
+  WITHDRAWN
+  ON_HOLD
+}
+
+enum InterviewType {
+  PHONE
+  VIDEO
+  ONSITE
+}
+
+enum InterviewStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+// Invoice related enums
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum PaymentMethodType {
+  CREDIT_CARD
+  BANK_TRANSFER
+}
+
+// Audit log related enums
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  LOGIN_FAILED
+  ROLE_CHANGE
+  PASSWORD_RESET
+  PASSWORD_CHANGE
+  MFA_ENABLE
+  MFA_DISABLE
+  EXPORT
+  IMPORT
+  DIAGNOSIS_START
+  DIAGNOSIS_COMPLETE
+  BRUSHUP_EXECUTE
+  CANDIDATE_STATUS_CHANGE
+  INTERVIEW_SCHEDULE
+  INVOICE_GENERATE
+  PAYMENT_PROCESS
+}
+
+// Notification related enums
+enum NotificationType {
+  INTERVIEW_REMINDER
+  INTERVIEW_SCHEDULED
+  INTERVIEW_CANCELLED
+  DIAGNOSIS_COMPLETE
+  DIAGNOSIS_REMINDER
+  STATUS_CHANGE
+  CANDIDATE_NEW
+  CANDIDATE_STATUS_CHANGE
+  INVOICE_ISSUED
+  INVOICE_OVERDUE
+  PAYMENT_RECEIVED
+  CONTRACT_EXPIRING
+  SYSTEM_ANNOUNCEMENT
+  WELCOME
+}
+
+// ========================================
+// User & Company Models
+// ========================================
+
+/// ユーザー
+/// システム管理者、企業管理者、企業ユーザー、一般ユーザーの4種類のロールを持つ
+model User {
+  id                String             @id @default(uuid()) @db.Uuid
+  email             String             @unique @db.VarChar(255)
+  passwordHash      String             @map("password_hash")
+  nickname          String             @db.VarChar(100)
+  fullName          String?            @map("full_name") @db.VarChar(100)
+  role              UserRole           @default(GENERAL_USER)
+  companyId         String?            @map("company_id") @db.Uuid
+  departmentId      String?            @map("department_id") @db.Uuid
+  parentUserId      String?            @map("parent_user_id") @db.Uuid
+  subUserPermission SubUserPermission? @map("sub_user_permission")
+  age               Int?               @db.SmallInt
+  gender            Gender?
+  isActive          Boolean            @default(true) @map("is_active")
+  mfaEnabled        Boolean            @default(false) @map("mfa_enabled")
+  mfaSecret         String?            @map("mfa_secret") @db.VarChar(255)
+  lastLoginAt       DateTime?          @map("last_login_at")
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+
+  // Relations
+  company             Company?            @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  department          Department?         @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  parentUser          User?               @relation("SubUsers", fields: [parentUserId], references: [id], onDelete: SetNull)
+  subUsers            User[]              @relation("SubUsers")
+  answers             Answer[]
+  diagnosisResults    DiagnosisResult[]
+  externalDiagnoses   ExternalDiagnosis[]
+  similarityScores    SimilarityScore[]   @relation("TargetUser")
+  similarToScores     SimilarityScore[]   @relation("SimilarUser")
+  candidates          Candidate[]         @relation("CandidateUser")
+  assignedCandidates  Candidate[]         @relation("AssignedTo")
+  interviewComments   InterviewComment[]  @relation("Interviewer")
+  interviews          Interview[]         @relation("Interviewer")
+  refreshTokens       RefreshToken[]
+  auditLogs           AuditLog[]
+  notifications       Notification[]
+
+  // Indexes
+  @@index([companyId])
+  @@index([departmentId])
+  @@index([parentUserId])
+  @@index([role])
+  @@index([isActive])
+  @@index([email])
+  @@map("users")
+}
+
+/// 企業
+/// 契約企業の情報を管理
+model Company {
+  id                String       @id @default(uuid()) @db.Uuid
+  name              String       @db.VarChar(255)
+  logoUrl           String?      @map("logo_url") @db.VarChar(500)
+  planId            String       @map("plan_id") @db.Uuid
+  diagnosisUrl      String       @unique @map("diagnosis_url") @db.VarChar(500)
+  contractStartDate DateTime     @map("contract_start_date") @db.Date
+  contractEndDate   DateTime     @map("contract_end_date") @db.Date
+  isActive          Boolean      @default(true) @map("is_active")
+  createdAt         DateTime     @default(now()) @map("created_at")
+  updatedAt         DateTime     @updatedAt @map("updated_at")
+
+  // Relations
+  plan           Plan            @relation(fields: [planId], references: [id], onDelete: Restrict)
+  users          User[]
+  departments    Department[]
+  candidates     Candidate[]
+  invoices       Invoice[]
+  paymentMethods PaymentMethod[]
+
+  // Indexes
+  @@index([planId])
+  @@index([isActive])
+  @@index([contractEndDate])
+  @@map("companies")
+}
+
+/// 部門
+/// 企業内の部門を階層構造で管理
+model Department {
+  id                 String       @id @default(uuid()) @db.Uuid
+  companyId          String       @map("company_id") @db.Uuid
+  name               String       @db.VarChar(100)
+  parentDepartmentId String?      @map("parent_department_id") @db.Uuid
+  createdAt          DateTime     @default(now()) @map("created_at")
+  updatedAt          DateTime     @updatedAt @map("updated_at")
+
+  // Relations
+  company          Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  parentDepartment Department?  @relation("SubDepartments", fields: [parentDepartmentId], references: [id], onDelete: SetNull)
+  subDepartments   Department[] @relation("SubDepartments")
+  users            User[]
+
+  // Indexes
+  @@index([companyId])
+  @@index([parentDepartmentId])
+  @@map("departments")
+}
+
+/// 料金プラン
+/// 企業が契約可能なプランを管理
+model Plan {
+  id           String    @id @default(uuid()) @db.Uuid
+  name         String    @db.VarChar(100)
+  description  String?   @db.Text
+  monthlyPrice Decimal   @map("monthly_price") @db.Decimal(10, 2)
+  maxUsers     Int       @map("max_users")
+  maxDiagnoses Int       @map("max_diagnoses")
+  features     Json      @default("[]")
+  isActive     Boolean   @default(true) @map("is_active")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  companies Company[]
+
+  // Indexes
+  @@index([isActive])
+  @@map("plans")
+}
+
+// ========================================
+// Authentication Models
+// ========================================
+
+/// リフレッシュトークン
+/// JWTリフレッシュトークンの管理
+model RefreshToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  token     String   @unique @db.VarChar(500)
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Indexes
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+// ========================================
+// Diagnosis Models
+// ========================================
+
+/// 設問
+/// 性格診断の設問を管理（90問、3ページ構成）
+model Question {
+  id           String           @id @default(uuid()) @db.Uuid
+  page         Int              @db.SmallInt
+  orderNumber  Int              @map("order_number") @db.SmallInt
+  questionText String           @map("question_text") @db.Text
+  category     QuestionCategory
+  isReverse    Boolean          @default(false) @map("is_reverse")
+  isActive     Boolean          @default(true) @map("is_active")
+  createdAt    DateTime         @default(now()) @map("created_at")
+  updatedAt    DateTime         @updatedAt @map("updated_at")
+
+  // Relations
+  answers Answer[]
+
+  // Indexes
+  @@unique([page, orderNumber])
+  @@index([page])
+  @@index([category])
+  @@index([isActive])
+  @@map("questions")
+}
+
+/// 回答
+/// ユーザーの設問への回答を管理（1-7のスコア）
+model Answer {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  questionId String   @map("question_id") @db.Uuid
+  score      Int      @db.SmallInt
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  // Constraints & Indexes
+  @@unique([userId, questionId])
+  @@index([userId])
+  @@index([questionId])
+  @@map("answers")
+}
+
+/// 診断結果
+/// 性格診断の結果を管理
+model DiagnosisResult {
+  id                String               @id @default(uuid()) @db.Uuid
+  userId            String               @map("user_id") @db.Uuid
+  typeName          String               @map("type_name") @db.VarChar(255)
+  typeCode          String               @map("type_code") @db.VarChar(10)
+  featureLabels     Json                 @map("feature_labels")
+  reliabilityStatus ReliabilityStatus    @default(RELIABLE) @map("reliability_status")
+  stressTolerance   StressToleranceLevel @map("stress_tolerance")
+  thinkingPattern   Json                 @map("thinking_pattern")
+  behaviorPattern   Json                 @map("behavior_pattern")
+  bigFive           Json                 @map("big_five")
+  rawScores         Json                 @map("raw_scores")
+  version           String               @db.VarChar(10)
+  completedAt       DateTime             @map("completed_at")
+  createdAt         DateTime             @default(now()) @map("created_at")
+  updatedAt         DateTime             @updatedAt @map("updated_at")
+
+  // Relations
+  user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  potentialScores  PotentialScore[]
+  brushUpHistories BrushUpHistory[]
+
+  // Indexes
+  @@index([userId])
+  @@index([typeCode])
+  @@index([reliabilityStatus])
+  @@index([completedAt])
+  @@index([createdAt])
+  @@map("diagnosis_results")
+}
+
+/// 活躍可能性スコア
+/// 職種別の活躍可能性スコアを管理
+model PotentialScore {
+  id                String         @id @default(uuid()) @db.Uuid
+  diagnosisResultId String         @map("diagnosis_result_id") @db.Uuid
+  jobType           String         @map("job_type") @db.VarChar(100)
+  grade             PotentialGrade
+  score             Int            @db.SmallInt
+  createdAt         DateTime       @default(now()) @map("created_at")
+
+  // Relations
+  diagnosisResult DiagnosisResult @relation(fields: [diagnosisResultId], references: [id], onDelete: Cascade)
+
+  // Constraints & Indexes
+  @@unique([diagnosisResultId, jobType])
+  @@index([diagnosisResultId])
+  @@index([jobType])
+  @@index([grade])
+  @@map("potential_scores")
+}
+
+/// 類似度スコア
+/// ユーザー間の性格類似度を管理
+model SimilarityScore {
+  id                   String   @id @default(uuid()) @db.Uuid
+  userId               String   @map("user_id") @db.Uuid
+  similarUserId        String   @map("similar_user_id") @db.Uuid
+  similarityPercentage Decimal  @map("similarity_percentage") @db.Decimal(5, 2)
+  differingFactors     Json     @map("differing_factors")
+  calculatedAt         DateTime @map("calculated_at")
+
+  // Relations
+  user        User @relation("TargetUser", fields: [userId], references: [id], onDelete: Cascade)
+  similarUser User @relation("SimilarUser", fields: [similarUserId], references: [id], onDelete: Cascade)
+
+  // Constraints & Indexes
+  @@unique([userId, similarUserId])
+  @@index([userId])
+  @@index([similarUserId])
+  @@index([similarityPercentage])
+  @@index([calculatedAt])
+  @@map("similarity_scores")
+}
+
+/// 外部診断結果
+/// MBTI・動物占いなどの外部診断結果を管理
+model ExternalDiagnosis {
+  id          String                @id @default(uuid()) @db.Uuid
+  userId      String                @map("user_id") @db.Uuid
+  type        ExternalDiagnosisType
+  result      Json
+  sourceUrl   String?               @map("source_url") @db.VarChar(500)
+  diagnosedAt DateTime?             @map("diagnosed_at") @db.Date
+  createdAt   DateTime              @default(now()) @map("created_at")
+  updatedAt   DateTime              @updatedAt @map("updated_at")
+
+  // Relations
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  brushUpTriggers BrushUpHistory[] @relation("ExternalDiagnosisTrigger")
+
+  // Constraints & Indexes
+  @@unique([userId, type])
+  @@index([userId])
+  @@index([type])
+  @@index([diagnosedAt])
+  @@map("external_diagnoses")
+}
+
+/// ブラッシュアップ履歴
+/// AI診断結果の更新履歴を管理（監査用）
+model BrushUpHistory {
+  id                String             @id @default(uuid()) @db.Uuid
+  diagnosisResultId String             @map("diagnosis_result_id") @db.Uuid
+  version           String             @db.VarChar(20)
+  triggerType       BrushUpTriggerType @map("trigger_type")
+  triggerSourceId   String?            @map("trigger_source_id") @db.Uuid
+  previousData      Json               @map("previous_data")
+  updatedData       Json               @map("updated_data")
+  aiReasoning       String?            @map("ai_reasoning") @db.Text
+  modelVersion      String?            @map("model_version") @db.VarChar(50)
+  confidence        Float?
+  riskFlag          Boolean            @default(false) @map("risk_flag")
+  displayDecision   String?            @map("display_decision") @db.VarChar(20)
+  inputSourceHash   String?            @map("input_source_hash") @db.VarChar(64)
+  createdAt         DateTime           @default(now()) @map("created_at")
+
+  // Relations
+  diagnosisResult          DiagnosisResult    @relation(fields: [diagnosisResultId], references: [id], onDelete: Cascade)
+  externalDiagnosisTrigger ExternalDiagnosis? @relation("ExternalDiagnosisTrigger", fields: [triggerSourceId], references: [id], onDelete: SetNull)
+  interviewCommentTrigger  InterviewComment?  @relation("InterviewCommentTrigger", fields: [triggerSourceId], references: [id], onDelete: SetNull, map: "brush_up_histories_interview_comment_fkey")
+
+  // Indexes
+  @@index([diagnosisResultId])
+  @@index([triggerType])
+  @@index([version])
+  @@index([createdAt])
+  @@map("brush_up_histories")
+}
+
+// ========================================
+// ATS (Applicant Tracking System) Models
+// ========================================
+
+/// 候補者
+/// 採用候補者の情報を管理
+model Candidate {
+  id              String          @id @default(uuid()) @db.Uuid
+  companyId       String          @map("company_id") @db.Uuid
+  userId          String          @map("user_id") @db.Uuid
+  status          CandidateStatus @default(UNTOUCHED)
+  appliedPosition String          @map("applied_position") @db.VarChar(255)
+  source          String          @db.VarChar(100)
+  tags            Json            @default("[]")
+  notes           String?         @db.Text
+  assignedTo      String?         @map("assigned_to") @db.Uuid
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  // Relations
+  company           Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user              User               @relation("CandidateUser", fields: [userId], references: [id], onDelete: Cascade)
+  assignedUser      User?              @relation("AssignedTo", fields: [assignedTo], references: [id], onDelete: SetNull)
+  interviews        Interview[]
+  interviewComments InterviewComment[]
+
+  // Indexes
+  @@index([companyId])
+  @@index([userId])
+  @@index([status])
+  @@index([assignedTo])
+  @@index([appliedPosition])
+  @@index([source])
+  @@index([createdAt])
+  @@map("candidates")
+}
+
+/// 面接
+/// 面接スケジュールを管理
+model Interview {
+  id            String          @id @default(uuid()) @db.Uuid
+  candidateId   String          @map("candidate_id") @db.Uuid
+  interviewerId String          @map("interviewer_id") @db.Uuid
+  scheduledAt   DateTime        @map("scheduled_at")
+  duration      Int             @default(60) @db.SmallInt
+  location      String?         @db.VarChar(500)
+  meetingUrl    String?         @map("meeting_url") @db.VarChar(500)
+  type          InterviewType   @default(VIDEO)
+  status        InterviewStatus @default(SCHEDULED)
+  reminderSent  Boolean         @default(false) @map("reminder_sent")
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+
+  // Relations
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  interviewer User      @relation("Interviewer", fields: [interviewerId], references: [id], onDelete: Cascade)
+
+  // Indexes
+  @@index([candidateId])
+  @@index([interviewerId])
+  @@index([scheduledAt])
+  @@index([status])
+  @@index([type])
+  @@map("interviews")
+}
+
+/// 面接コメント
+/// 面接官による評価コメントを管理
+model InterviewComment {
+  id                    String   @id @default(uuid()) @db.Uuid
+  candidateId           String   @map("candidate_id") @db.Uuid
+  interviewerId         String   @map("interviewer_id") @db.Uuid
+  interviewDate         DateTime @map("interview_date")
+  comment               String   @db.Text
+  rating                Int      @db.SmallInt
+  tags                  Json     @default("[]")
+  structuredEvaluation  Json?    @map("structured_evaluation")
+  extractedFeaturesJson Json?    @map("extracted_features_json")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  candidate       Candidate        @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  interviewer     User             @relation("Interviewer", fields: [interviewerId], references: [id], onDelete: Cascade)
+  brushUpTriggers BrushUpHistory[] @relation("InterviewCommentTrigger")
+
+  // Indexes
+  @@index([candidateId])
+  @@index([interviewerId])
+  @@index([interviewDate])
+  @@index([rating])
+  @@map("interview_comments")
+}
+
+// ========================================
+// Billing Models
+// ========================================
+
+/// 請求書
+/// 企業への請求情報を管理
+model Invoice {
+  id                 String        @id @default(uuid()) @db.Uuid
+  companyId          String        @map("company_id") @db.Uuid
+  invoiceNumber      String        @unique @map("invoice_number") @db.VarChar(50)
+  billingPeriodStart DateTime      @map("billing_period_start") @db.Date
+  billingPeriodEnd   DateTime      @map("billing_period_end") @db.Date
+  subtotal           Decimal       @db.Decimal(10, 2)
+  tax                Decimal       @db.Decimal(10, 2)
+  total              Decimal       @db.Decimal(10, 2)
+  status             InvoiceStatus @default(DRAFT)
+  dueDate            DateTime      @map("due_date") @db.Date
+  paidAt             DateTime?     @map("paid_at")
+  stripeInvoiceId    String?       @map("stripe_invoice_id") @db.VarChar(255)
+  pdfUrl             String?       @map("pdf_url") @db.VarChar(500)
+  createdAt          DateTime      @default(now()) @map("created_at")
+  updatedAt          DateTime      @updatedAt @map("updated_at")
+
+  // Relations
+  company   Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  lineItems InvoiceLineItem[]
+
+  // Indexes
+  @@index([companyId])
+  @@index([status])
+  @@index([dueDate])
+  @@index([billingPeriodStart, billingPeriodEnd])
+  @@map("invoices")
+}
+
+/// 請求明細
+/// 請求書の明細行を管理
+model InvoiceLineItem {
+  id          String   @id @default(uuid()) @db.Uuid
+  invoiceId   String   @map("invoice_id") @db.Uuid
+  description String   @db.VarChar(500)
+  quantity    Int
+  unitPrice   Decimal  @map("unit_price") @db.Decimal(10, 2)
+  amount      Decimal  @db.Decimal(10, 2)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  // Relations
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  // Indexes
+  @@index([invoiceId])
+  @@map("invoice_line_items")
+}
+
+/// 支払い方法
+/// 企業の支払い方法を管理
+model PaymentMethod {
+  id                    String            @id @default(uuid()) @db.Uuid
+  companyId             String            @map("company_id") @db.Uuid
+  type                  PaymentMethodType
+  stripePaymentMethodId String?           @map("stripe_payment_method_id") @db.VarChar(255)
+  last4                 String?           @db.VarChar(4)
+  brand                 String?           @db.VarChar(50)
+  isDefault             Boolean           @default(false) @map("is_default")
+  createdAt             DateTime          @default(now()) @map("created_at")
+  updatedAt             DateTime          @updatedAt @map("updated_at")
+
+  // Relations
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  // Indexes
+  @@index([companyId])
+  @@index([isDefault])
+  @@map("payment_methods")
+}
+
+// ========================================
+// Audit Log Models
+// ========================================
+
+/// 監査ログ
+/// システム操作の監査ログを管理（改ざん防止のためUPDATEは不可）
+model AuditLog {
+  id           String      @id @default(uuid()) @db.Uuid
+  userId       String?     @map("user_id") @db.Uuid
+  action       AuditAction
+  entityType   String      @map("entity_type") @db.VarChar(100)
+  entityId     String?     @map("entity_id") @db.Uuid
+  previousData Json?       @map("previous_data")
+  newData      Json?       @map("new_data")
+  ipAddress    String      @map("ip_address") @db.VarChar(45)
+  userAgent    String      @map("user_agent") @db.VarChar(500)
+  createdAt    DateTime    @default(now()) @map("created_at")
+
+  // Relations
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  // Indexes
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+/// AI生成ログ
+/// AI機能の実行ログを管理（監査用）
+model AiGenerationLog {
+  id              String   @id @default(uuid()) @db.Uuid
+  userId          String?  @map("user_id") @db.Uuid
+  inputSourceHash String   @map("input_source_hash") @db.VarChar(64)
+  modelVersion    String   @map("model_version") @db.VarChar(50)
+  confidence      Float?
+  riskFlag        Boolean  @default(false) @map("risk_flag")
+  displayDecision String   @map("display_decision") @db.VarChar(20)
+  inputData       Json?    @map("input_data")
+  outputData      Json?    @map("output_data")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  // Indexes
+  @@index([userId])
+  @@index([createdAt])
+  @@index([modelVersion])
+  @@map("ai_generation_logs")
+}
+
+// ========================================
+// Notification Models
+// ========================================
+
+/// 通知
+/// ユーザーへの通知を管理
+model Notification {
+  id        String           @id @default(uuid()) @db.Uuid
+  userId    String           @map("user_id") @db.Uuid
+  type      NotificationType
+  title     String           @db.VarChar(255)
+  message   String           @db.Text
+  link      String?          @db.VarChar(500)
+  isRead    Boolean          @default(false) @map("is_read")
+  readAt    DateTime?        @map("read_at")
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Indexes
+  @@index([userId])
+  @@index([type])
+  @@index([isRead])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+/// メール送信履歴
+/// システムから送信されたメールの履歴を管理
+model EmailLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  toEmail     String   @map("to_email") @db.VarChar(255)
+  toUserId    String?  @map("to_user_id") @db.Uuid
+  subject     String   @db.VarChar(500)
+  templateId  String?  @map("template_id") @db.VarChar(100)
+  status      String   @db.VarChar(20)
+  sentAt      DateTime @map("sent_at")
+  deliveredAt DateTime? @map("delivered_at")
+  openedAt    DateTime? @map("opened_at")
+  errorMessage String? @map("error_message") @db.Text
+  metadata    Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  // Indexes
+  @@index([toEmail])
+  @@index([toUserId])
+  @@index([status])
+  @@index([sentAt])
+  @@map("email_logs")
+}

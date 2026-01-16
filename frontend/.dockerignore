@@ -1,0 +1,12 @@
+node_modules
+.next
+out
+.env
+.env.local
+.git
+.gitignore
+*.md
+coverage
+.eslintrc.js
+.prettierrc
+.prettierignore
