@@ -604,24 +604,35 @@ export class AuthService {
    * ログイン試行制限チェック
    */
   private async checkLoginLockout(email: string): Promise<boolean> {
-    const attempts = await redisClient.get(`login_attempts:${email}`);
-    if (attempts && parseInt(attempts) >= LOGIN_ATTEMPT_LIMIT) {
-      const ttl = await redisClient.ttl(`login_attempts:${email}`);
-      if (ttl > 0) {
-        return true;
+    try {
+      const attempts = await redisClient.get(`login_attempts:${email}`);
+      if (attempts && parseInt(attempts) >= LOGIN_ATTEMPT_LIMIT) {
+        const ttl = await redisClient.ttl(`login_attempts:${email}`);
+        if (ttl > 0) {
+          return true;
+        }
       }
+      return false;
+    } catch (error) {
+      // Redisが利用できない場合はロックアウトをスキップ
+      console.warn('Redis unavailable for login lockout check:', error);
+      return false;
     }
-    return false;
   }
 
   /**
    * ログイン試行回数インクリメント
    */
   private async incrementLoginAttempts(email: string): Promise<void> {
-    const key = `login_attempts:${email}`;
-    const attempts = await redisClient.incr(key);
-    if (attempts === 1) {
-      await redisClient.expire(key, LOGIN_LOCKOUT_DURATION);
+    try {
+      const key = `login_attempts:${email}`;
+      const attempts = await redisClient.incr(key);
+      if (attempts === 1) {
+        await redisClient.expire(key, LOGIN_LOCKOUT_DURATION);
+      }
+    } catch (error) {
+      // Redisが利用できない場合はスキップ
+      console.warn('Redis unavailable for login attempts:', error);
     }
   }
 
@@ -629,7 +640,12 @@ export class AuthService {
    * ログイン試行回数リセット
    */
   private async resetLoginAttempts(email: string): Promise<void> {
-    await redisClient.del(`login_attempts:${email}`);
+    try {
+      await redisClient.del(`login_attempts:${email}`);
+    } catch (error) {
+      // Redisが利用できない場合はスキップ
+      console.warn('Redis unavailable for reset login attempts:', error);
+    }
   }
 
   /**
