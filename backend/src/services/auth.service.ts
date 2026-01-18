@@ -100,8 +100,11 @@ export class AuthService {
     // MFA必須チェック（企業管理者以上）
     const requiresMfa = this.isMfaRequired(user.role);
     
-    // MFAが有効な場合
-    if (user.mfaEnabled && user.mfaSecret) {
+    // 開発環境ではMFAをスキップ（SKIP_MFA環境変数で制御）
+    const skipMfa = process.env.SKIP_MFA === 'true' || process.env.NODE_ENV === 'development';
+    
+    // MFAが有効な場合（ただし開発環境ではスキップ可能）
+    if (user.mfaEnabled && user.mfaSecret && !skipMfa) {
       const mfaToken = await this.generateMfaToken(user.id);
       return {
         user: this.sanitizeUser(user),
@@ -111,7 +114,7 @@ export class AuthService {
     }
 
     // MFAが必須だが未設定の場合（開発環境ではスキップ）
-    if (requiresMfa && !user.mfaEnabled && process.env.NODE_ENV !== 'development') {
+    if (requiresMfa && !user.mfaEnabled && !skipMfa) {
       const mfaToken = await this.generateMfaToken(user.id);
       return {
         user: this.sanitizeUser(user),
