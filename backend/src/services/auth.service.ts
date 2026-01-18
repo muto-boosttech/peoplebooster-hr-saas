@@ -572,17 +572,23 @@ export class AuthService {
       },
     });
 
-    // セッション情報をRedisに保存
-    await redisClient.setex(
-      `session:${user.id}`,
-      rememberMe ? 90 * 24 * 60 * 60 : 30 * 24 * 60 * 60,
-      JSON.stringify({
-        userId: user.id,
-        email: user.email,
-        role: user.role,
-        loginAt: new Date().toISOString(),
-      })
-    );
+    // セッション情報をRedisに保存（Redisが利用可能な場合のみ）
+    if (redisClient) {
+      try {
+        await redisClient.setex(
+          `session:${user.id}`,
+          rememberMe ? 90 * 24 * 60 * 60 : 30 * 24 * 60 * 60,
+          JSON.stringify({
+            userId: user.id,
+            email: user.email,
+            role: user.role,
+            loginAt: new Date().toISOString(),
+          })
+        );
+      } catch (error) {
+        console.warn('Redis unavailable for session storage:', error);
+      }
+    }
 
     return {
       accessToken,
@@ -596,7 +602,10 @@ export class AuthService {
    */
   private async generateMfaToken(userId: string): Promise<string> {
     const mfaToken = crypto.randomBytes(32).toString('hex');
-    await redisClient.setex(`mfa_token:${mfaToken}`, MFA_TOKEN_EXPIRY, userId);
+    // Redisが利用できない場合はトークンのみ返す
+    if (redisClient) {
+      await redisClient.setex(`mfa_token:${mfaToken}`, MFA_TOKEN_EXPIRY, userId);
+    }
     return mfaToken;
   }
 
@@ -604,6 +613,10 @@ export class AuthService {
    * ログイン試行制限チェック
    */
   private async checkLoginLockout(email: string): Promise<boolean> {
+    // Redisが利用できない場合はロックアウトをスキップ
+    if (!redisClient) {
+      return false;
+    }
     try {
       const attempts = await redisClient.get(`login_attempts:${email}`);
       if (attempts && parseInt(attempts) >= LOGIN_ATTEMPT_LIMIT) {
@@ -624,6 +637,10 @@ export class AuthService {
    * ログイン試行回数インクリメント
    */
   private async incrementLoginAttempts(email: string): Promise<void> {
+    // Redisが利用できない場合はスキップ
+    if (!redisClient) {
+      return;
+    }
     try {
       const key = `login_attempts:${email}`;
       const attempts = await redisClient.incr(key);
@@ -640,6 +657,10 @@ export class AuthService {
    * ログイン試行回数リセット
    */
   private async resetLoginAttempts(email: string): Promise<void> {
+    // Redisが利用できない場合はスキップ
+    if (!redisClient) {
+      return;
+    }
     try {
       await redisClient.del(`login_attempts:${email}`);
     } catch (error) {
