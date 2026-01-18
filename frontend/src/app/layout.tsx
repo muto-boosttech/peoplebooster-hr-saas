@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Inter, Noto_Sans_JP } from 'next/font/google';
 import { Toaster } from 'react-hot-toast';
+import { Providers } from '@/components/providers/Providers';
 import './globals.css';
 
 const inter = Inter({
@@ -41,29 +42,31 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="ja" className={`${inter.variable} ${notoSansJP.variable}`}>
-      <body className="min-h-screen bg-gray-50 font-sans antialiased">
-        {children}
-        <Toaster
-          position="top-right"
-          toastOptions={{
-            duration: 4000,
-            style: {
-              background: '#363636',
-              color: '#fff',
-            },
-            success: {
+    <html lang="ja" className={`${inter.variable} ${notoSansJP.variable}`} suppressHydrationWarning>
+      <body className="min-h-screen bg-background font-sans antialiased">
+        <Providers>
+          {children}
+          <Toaster
+            position="top-right"
+            toastOptions={{
+              duration: 4000,
               style: {
-                background: '#059669',
+                background: '#363636',
+                color: '#fff',
               },
-            },
-            error: {
-              style: {
-                background: '#dc2626',
+              success: {
+                style: {
+                  background: '#059669',
+                },
               },
-            },
-          }}
-        />
+              error: {
+                style: {
+                  background: '#dc2626',
+                },
+              },
+            }}
+          />
+        </Providers>
       </body>
     </html>
   );

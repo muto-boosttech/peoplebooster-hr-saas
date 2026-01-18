@@ -1,291 +1,591 @@
 import { Request, Response } from 'express';
-import { prisma } from '../models';
-import { AuthenticatedRequest, UserRole } from '../types';
+import { AuthUser } from '../types/auth.types';
+import { userService } from '../services/user.service';
 import {
-  hashPassword,
-  successResponse,
-  errorResponse,
-  paginatedResponse,
-} from '../utils';
-import { CreateUserInput, UpdateUserInput, PaginationInput } from '../validators';
+  getUsersQuerySchema,
+  createUserSchema,
+  updateUserSchema,
+  changeRoleSchema,
+  createSubUserSchema,
+  toggleActiveSchema,
+  bulkCreateUsersSchema,
+} from '../validators/user.validator';
+import { ZodError } from 'zod';
 
 /**
- * Get all users (with pagination and filtering)
- * GET /users
+ * リクエストからIPアドレスを取得
  */
-export const getUsers = async (
-  req: AuthenticatedRequest,
-  res: Response
-): Promise<void> => {
-  try {
-    const { page, limit, sortBy, sortOrder } = req.query as unknown as PaginationInput;
-    const skip = (page - 1) * limit;
-
-    // Build where clause based on user role
-    let whereClause = {};
-    if (req.user?.role === UserRole.COMPANY_ADMIN) {
-      whereClause = { companyId: req.user.companyId };
-    } else if (req.user?.role === UserRole.COMPANY_USER) {
-      whereClause = { companyId: req.user.companyId };
-    }
-
-    const [users, total] = await Promise.all([
-      prisma.user.findMany({
-        where: whereClause,
-        skip,
-        take: limit,
-        orderBy: sortBy ? { [sortBy]: sortOrder } : { createdAt: 'desc' },
-        select: {
-          id: true,
-          email: true,
-          nickname: true,
-          fullName: true,
-          role: true,
-          companyId: true,
-          departmentId: true,
-          createdAt: true,
-          updatedAt: true,
-          company: {
-            select: { name: true },
-          },
-          department: {
-            select: { name: true },
-          },
-        },
-      }),
-      prisma.user.count({ where: whereClause }),
-    ]);
-
-    res.json(successResponse(paginatedResponse(users, page, limit, total)));
-  } catch (error) {
-    console.error('Get users error:', error);
-    res.status(500).json(errorResponse('Failed to get users'));
+function getIpAddress(req: Request): string {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (typeof forwarded === 'string') {
+    return forwarded.split(',')[0].trim();
   }
-};
+  return req.socket.remoteAddress || 'unknown';
+}
 
 /**
- * Get user by ID
- * GET /users/:id
+ * リクエストからUser-Agentを取得
  */
-export const getUserById = async (
-  req: AuthenticatedRequest,
-  res: Response
-): Promise<void> => {
-  try {
-    const { id } = req.params;
-
-    const user = await prisma.user.findUnique({
-      where: { id },
-      include: {
-        company: true,
-        department: true,
-        diagnosisResults: {
-          orderBy: { completedAt: 'desc' },
-          take: 1,
-        },
-      },
-    });
-
-    if (!user) {
-      res.status(404).json(errorResponse('User not found'));
-      return;
-    }
-
-    // Check access permission
-    if (
-      req.user?.role !== UserRole.SYSTEM_ADMIN &&
-      req.user?.companyId !== user.companyId &&
-      req.user?.userId !== user.id
-    ) {
-      res.status(403).json(errorResponse('Access denied'));
-      return;
-    }
-
-    res.json(
-      successResponse({
-        id: user.id,
-        email: user.email,
-        nickname: user.nickname,
-        fullName: user.fullName,
-        role: user.role,
-        companyId: user.companyId,
-        companyName: user.company?.name,
-        departmentId: user.departmentId,
-        departmentName: user.department?.name,
-        latestDiagnosis: user.diagnosisResults[0] || null,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt,
-      })
-    );
-  } catch (error) {
-    console.error('Get user by ID error:', error);
-    res.status(500).json(errorResponse('Failed to get user'));
-  }
-};
+function getUserAgent(req: Request): string {
+  return req.headers['user-agent'] || 'unknown';
+}
 
 /**
- * Create new user
- * POST /users
+ * Zodエラーをフォーマット
  */
-export const createUser = async (
-  req: AuthenticatedRequest,
-  res: Response
-): Promise<void> => {
-  try {
-    const data = req.body as CreateUserInput;
+function formatZodError(error: ZodError): { field: string; message: string }[] {
+  return error.errors.map((err) => ({
+    field: err.path.join('.'),
+    message: err.message,
+  }));
+}
 
-    // Check if email already exists
-    const existingUser = await prisma.user.findUnique({
-      where: { email: data.email },
-    });
+/**
+ * ユーザーコントローラー
+ */
+export class UserController {
+  /**
+   * GET /api/users
+   * ユーザー一覧取得
+   */
+  async getUsers(req: Request, res: Response): Promise<void> {
+    try {
+      const currentUser = req.user as AuthUser;
 
-    if (existingUser) {
-      res.status(409).json(errorResponse('Email already registered'));
-      return;
-    }
-
-    // Company admin can only create users for their company
-    if (req.user?.role === UserRole.COMPANY_ADMIN) {
-      data.companyId = req.user.companyId;
-      if (data.role === UserRole.SYSTEM_ADMIN) {
-        res.status(403).json(errorResponse('Cannot create system admin'));
+      // クエリパラメータのバリデーション
+      const queryResult = getUsersQuerySchema.safeParse(req.query);
+      if (!queryResult.success) {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'クエリパラメータが不正です',
+            details: formatZodError(queryResult.error),
+          },
+        });
         return;
       }
+
+      const result = await userService.getUsers(queryResult.data, currentUser);
+
+      if (!result.success) {
+        res.status(400).json({
+          success: false,
+          error: result.error,
+        });
+        return;
+      }
+
+      res.json({
+        success: true,
+        data: result.data,
+      });
+    } catch (error) {
+      console.error('Error in getUsers:', error);
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: 'サーバーエラーが発生しました',
+        },
+      });
     }
-
-    const passwordHash = await hashPassword(data.password);
-
-    const user = await prisma.user.create({
-      data: {
-        email: data.email,
-        passwordHash,
-        nickname: data.nickname,
-        fullName: data.fullName,
-        role: data.role,
-        companyId: data.companyId,
-        departmentId: data.departmentId,
-        parentUserId: data.parentUserId,
-        subUserPermission: data.subUserPermission,
-      },
-      select: {
-        id: true,
-        email: true,
-        nickname: true,
-        fullName: true,
-        role: true,
-        companyId: true,
-        departmentId: true,
-        createdAt: true,
-      },
-    });
-
-    res.status(201).json(successResponse(user, 'User created successfully'));
-  } catch (error) {
-    console.error('Create user error:', error);
-    res.status(500).json(errorResponse('Failed to create user'));
   }
-};
 
-/**
- * Update user
- * PUT /users/:id
- */
-export const updateUser = async (
-  req: AuthenticatedRequest,
-  res: Response
-): Promise<void> => {
-  try {
-    const { id } = req.params;
-    const data = req.body as UpdateUserInput;
+  /**
+   * GET /api/users/:id
+   * ユーザー詳細取得
+   */
+  async getUserById(req: Request, res: Response): Promise<void> {
+    try {
+      const currentUser = req.user as AuthUser;
+      const { id } = req.params;
 
-    const existingUser = await prisma.user.findUnique({
-      where: { id },
-    });
+      const result = await userService.getUserById(id, currentUser);
 
-    if (!existingUser) {
-      res.status(404).json(errorResponse('User not found'));
-      return;
+      if (!result.success) {
+        const statusCode = result.error?.code === 'NOT_FOUND' ? 404 : 
+                          result.error?.code === 'FORBIDDEN' ? 403 : 400;
+        res.status(statusCode).json({
+          success: false,
+          error: result.error,
+        });
+        return;
+      }
+
+      res.json({
+        success: true,
+        data: result.data,
+      });
+    } catch (error) {
+      console.error('Error in getUserById:', error);
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: 'サーバーエラーが発生しました',
+        },
+      });
     }
-
-    // Check access permission
-    if (
-      req.user?.role !== UserRole.SYSTEM_ADMIN &&
-      req.user?.companyId !== existingUser.companyId &&
-      req.user?.userId !== id
-    ) {
-      res.status(403).json(errorResponse('Access denied'));
-      return;
-    }
-
-    const user = await prisma.user.update({
-      where: { id },
-      data: {
-        nickname: data.nickname,
-        fullName: data.fullName,
-        departmentId: data.departmentId,
-        subUserPermission: data.subUserPermission,
-      },
-      select: {
-        id: true,
-        email: true,
-        nickname: true,
-        fullName: true,
-        role: true,
-        companyId: true,
-        departmentId: true,
-        updatedAt: true,
-      },
-    });
-
-    res.json(successResponse(user, 'User updated successfully'));
-  } catch (error) {
-    console.error('Update user error:', error);
-    res.status(500).json(errorResponse('Failed to update user'));
   }
-};
 
-/**
- * Delete user
- * DELETE /users/:id
- */
-export const deleteUser = async (
-  req: AuthenticatedRequest,
-  res: Response
-): Promise<void> => {
-  try {
-    const { id } = req.params;
+  /**
+   * POST /api/users
+   * ユーザー作成
+   */
+  async createUser(req: Request, res: Response): Promise<void> {
+    try {
+      const currentUser = req.user as AuthUser;
 
-    const existingUser = await prisma.user.findUnique({
-      where: { id },
-    });
+      // リクエストボディのバリデーション
+      const bodyResult = createUserSchema.safeParse(req.body);
+      if (!bodyResult.success) {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'リクエストデータが不正です',
+            details: formatZodError(bodyResult.error),
+          },
+        });
+        return;
+      }
 
-    if (!existingUser) {
-      res.status(404).json(errorResponse('User not found'));
-      return;
+      const result = await userService.createUser(
+        bodyResult.data,
+        currentUser,
+        getIpAddress(req),
+        getUserAgent(req)
+      );
+
+      if (!result.success) {
+        const statusCode = result.error?.code === 'EMAIL_EXISTS' ? 409 :
+                          result.error?.code === 'FORBIDDEN' ? 403 : 400;
+        res.status(statusCode).json({
+          success: false,
+          error: result.error,
+        });
+        return;
+      }
+
+      res.status(201).json({
+        success: true,
+        data: result.data,
+        message: 'ユーザーを作成しました',
+      });
+    } catch (error) {
+      console.error('Error in createUser:', error);
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: 'サーバーエラーが発生しました',
+        },
+      });
     }
-
-    // Check access permission
-    if (
-      req.user?.role !== UserRole.SYSTEM_ADMIN &&
-      req.user?.companyId !== existingUser.companyId
-    ) {
-      res.status(403).json(errorResponse('Access denied'));
-      return;
-    }
-
-    // Prevent deleting self
-    if (req.user?.userId === id) {
-      res.status(400).json(errorResponse('Cannot delete your own account'));
-      return;
-    }
-
-    await prisma.user.delete({
-      where: { id },
-    });
-
-    res.json(successResponse(null, 'User deleted successfully'));
-  } catch (error) {
-    console.error('Delete user error:', error);
-    res.status(500).json(errorResponse('Failed to delete user'));
   }
-};
+
+  /**
+   * PUT /api/users/:id
+   * ユーザー更新
+   */
+  async updateUser(req: Request, res: Response): Promise<void> {
+    try {
+      const currentUser = req.user as AuthUser;
+      const { id } = req.params;
+
+      // リクエストボディのバリデーション
+      const bodyResult = updateUserSchema.safeParse(req.body);
+      if (!bodyResult.success) {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'リクエストデータが不正です',
+            details: formatZodError(bodyResult.error),
+          },
+        });
+        return;
+      }
+
+      const result = await userService.updateUser(
+        id,
+        bodyResult.data,
+        currentUser,
+        getIpAddress(req),
+        getUserAgent(req)
+      );
+
+      if (!result.success) {
+        const statusCode = result.error?.code === 'NOT_FOUND' ? 404 :
+                          result.error?.code === 'FORBIDDEN' ? 403 : 400;
+        res.status(statusCode).json({
+          success: false,
+          error: result.error,
+        });
+        return;
+      }
+
+      res.json({
+        success: true,
+        data: result.data,
+        message: 'ユーザー情報を更新しました',
+      });
+    } catch (error) {
+      console.error('Error in updateUser:', error);
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: 'サーバーエラーが発生しました',
+        },
+      });
+    }
+  }
+
+  /**
+   * DELETE /api/users/:id
+   * ユーザー削除（論理削除）
+   */
+  async deleteUser(req: Request, res: Response): Promise<void> {
+    try {
+      const currentUser = req.user as AuthUser;
+      const { id } = req.params;
+
+      const result = await userService.deleteUser(
+        id,
+        currentUser,
+        getIpAddress(req),
+        getUserAgent(req)
+      );
+
+      if (!result.success) {
+        const statusCode = result.error?.code === 'NOT_FOUND' ? 404 :
+                          result.error?.code === 'FORBIDDEN' ? 403 : 400;
+        res.status(statusCode).json({
+          success: false,
+          error: result.error,
+        });
+        return;
+      }
+
+      res.json({
+        success: true,
+        message: 'ユーザーを削除しました',
+      });
+    } catch (error) {
+      console.error('Error in deleteUser:', error);
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: 'サーバーエラーが発生しました',
+        },
+      });
+    }
+  }
+
+  /**
+   * PUT /api/users/:id/role
+   * ロール変更
+   */
+  async changeRole(req: Request, res: Response): Promise<void> {
+    try {
+      const currentUser = req.user as AuthUser;
+      const { id } = req.params;
+
+      // リクエストボディのバリデーション
+      const bodyResult = changeRoleSchema.safeParse(req.body);
+      if (!bodyResult.success) {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'リクエストデータが不正です',
+            details: formatZodError(bodyResult.error),
+          },
+        });
+        return;
+      }
+
+      const result = await userService.changeRole(
+        id,
+        bodyResult.data,
+        currentUser,
+        getIpAddress(req),
+        getUserAgent(req)
+      );
+
+      if (!result.success) {
+        const statusCode = result.error?.code === 'NOT_FOUND' ? 404 :
+                          result.error?.code === 'FORBIDDEN' ? 403 : 400;
+        res.status(statusCode).json({
+          success: false,
+          error: result.error,
+        });
+        return;
+      }
+
+      res.json({
+        success: true,
+        data: result.data,
+        message: 'ロールを変更しました',
+      });
+    } catch (error) {
+      console.error('Error in changeRole:', error);
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: 'サーバーエラーが発生しました',
+        },
+      });
+    }
+  }
+
+  /**
+   * POST /api/users/:id/sub-users
+   * サブユーザー作成
+   */
+  async createSubUser(req: Request, res: Response): Promise<void> {
+    try {
+      const currentUser = req.user as AuthUser;
+      const { id } = req.params;
+
+      // リクエストボディのバリデーション
+      const bodyResult = createSubUserSchema.safeParse(req.body);
+      if (!bodyResult.success) {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'リクエストデータが不正です',
+            details: formatZodError(bodyResult.error),
+          },
+        });
+        return;
+      }
+
+      const result = await userService.createSubUser(
+        id,
+        bodyResult.data,
+        currentUser,
+        getIpAddress(req),
+        getUserAgent(req)
+      );
+
+      if (!result.success) {
+        const statusCode = result.error?.code === 'NOT_FOUND' ? 404 :
+                          result.error?.code === 'EMAIL_EXISTS' ? 409 :
+                          result.error?.code === 'FORBIDDEN' ? 403 : 400;
+        res.status(statusCode).json({
+          success: false,
+          error: result.error,
+        });
+        return;
+      }
+
+      res.status(201).json({
+        success: true,
+        data: result.data,
+        message: 'サブユーザーを作成しました',
+      });
+    } catch (error) {
+      console.error('Error in createSubUser:', error);
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: 'サーバーエラーが発生しました',
+        },
+      });
+    }
+  }
+
+  /**
+   * GET /api/users/:id/sub-users
+   * サブユーザー一覧取得
+   */
+  async getSubUsers(req: Request, res: Response): Promise<void> {
+    try {
+      const currentUser = req.user as AuthUser;
+      const { id } = req.params;
+
+      const result = await userService.getSubUsers(id, currentUser);
+
+      if (!result.success) {
+        const statusCode = result.error?.code === 'NOT_FOUND' ? 404 :
+                          result.error?.code === 'FORBIDDEN' ? 403 : 400;
+        res.status(statusCode).json({
+          success: false,
+          error: result.error,
+        });
+        return;
+      }
+
+      res.json({
+        success: true,
+        data: result.data,
+      });
+    } catch (error) {
+      console.error('Error in getSubUsers:', error);
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: 'サーバーエラーが発生しました',
+        },
+      });
+    }
+  }
+
+  /**
+   * POST /api/users/bulk
+   * 一括ユーザー作成
+   */
+  async bulkCreateUsers(req: Request, res: Response): Promise<void> {
+    try {
+      const currentUser = req.user as AuthUser;
+
+      // リクエストボディのバリデーション
+      const bodyResult = bulkCreateUsersSchema.safeParse(req.body);
+      if (!bodyResult.success) {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'リクエストデータが不正です',
+            details: formatZodError(bodyResult.error),
+          },
+        });
+        return;
+      }
+
+      const result = await userService.bulkCreateUsers(
+        bodyResult.data,
+        currentUser,
+        getIpAddress(req),
+        getUserAgent(req)
+      );
+
+      if (!result.success) {
+        const statusCode = result.error?.code === 'FORBIDDEN' ? 403 : 400;
+        res.status(statusCode).json({
+          success: false,
+          error: result.error,
+        });
+        return;
+      }
+
+      res.status(201).json({
+        success: true,
+        data: result.data,
+        message: `${result.data?.created}件のユーザーを作成しました`,
+      });
+    } catch (error) {
+      console.error('Error in bulkCreateUsers:', error);
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: 'サーバーエラーが発生しました',
+        },
+      });
+    }
+  }
+
+  /**
+   * PUT /api/users/:id/active
+   * アクティブ状態の切り替え
+   */
+  async toggleActive(req: Request, res: Response): Promise<void> {
+    try {
+      const currentUser = req.user as AuthUser;
+      const { id } = req.params;
+
+      // リクエストボディのバリデーション
+      const bodyResult = toggleActiveSchema.safeParse(req.body);
+      if (!bodyResult.success) {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'リクエストデータが不正です',
+            details: formatZodError(bodyResult.error),
+          },
+        });
+        return;
+      }
+
+      const result = await userService.toggleActive(
+        id,
+        bodyResult.data.isActive,
+        currentUser,
+        getIpAddress(req),
+        getUserAgent(req)
+      );
+
+      if (!result.success) {
+        const statusCode = result.error?.code === 'NOT_FOUND' ? 404 :
+                          result.error?.code === 'FORBIDDEN' ? 403 : 400;
+        res.status(statusCode).json({
+          success: false,
+          error: result.error,
+        });
+        return;
+      }
+
+      res.json({
+        success: true,
+        data: result.data,
+        message: result.data?.isActive ? 'ユーザーを有効化しました' : 'ユーザーを無効化しました',
+      });
+    } catch (error) {
+      console.error('Error in toggleActive:', error);
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: 'サーバーエラーが発生しました',
+        },
+      });
+    }
+  }
+
+  /**
+   * GET /api/users/me
+   * 現在のユーザー情報取得
+   */
+  async getCurrentUser(req: Request, res: Response): Promise<void> {
+    try {
+      const currentUser = req.user as AuthUser;
+
+      const result = await userService.getUserById(currentUser.userId, currentUser);
+
+      if (!result.success) {
+        res.status(404).json({
+          success: false,
+          error: result.error,
+        });
+        return;
+      }
+
+      res.json({
+        success: true,
+        data: result.data,
+      });
+    } catch (error) {
+      console.error('Error in getCurrentUser:', error);
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: 'サーバーエラーが発生しました',
+        },
+      });
+    }
+  }
+}
+
+// シングルトンインスタンス
+export const userController = new UserController();

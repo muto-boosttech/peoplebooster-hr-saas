@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>個人診断レポート - <%= user.fullName %></title>
+  <%- getChartScript() %>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: 'Noto Sans JP', 'Hiragino Kaku Gothic ProN', 'メイリオ', sans-serif;
+      color: #1f2937;
+      line-height: 1.6;
+      background: #fff;
+    }
+    .page {
+      padding: 40px;
+      min-height: 297mm;
+      page-break-after: always;
+    }
+    .page:last-child {
+      page-break-after: avoid;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 40px;
+      padding-bottom: 20px;
+      border-bottom: 3px solid #2563eb;
+    }
+    .header-left h1 {
+      font-size: 28px;
+      color: #1e40af;
+      margin-bottom: 8px;
+    }
+    .header-left .subtitle {
+      font-size: 14px;
+      color: #6b7280;
+    }
+    .logo {
+      max-height: 60px;
+      max-width: 200px;
+    }
+    .section {
+      margin-bottom: 36px;
+    }
+    .section-title {
+      font-size: 18px;
+      color: #1e40af;
+      border-left: 4px solid #2563eb;
+      padding-left: 12px;
+      margin-bottom: 20px;
+      font-weight: 600;
+    }
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+    }
+    .info-item {
+      background: #f8fafc;
+      padding: 16px;
+      border-radius: 8px;
+    }
+    .info-label {
+      font-size: 12px;
+      color: #6b7280;
+      margin-bottom: 4px;
+    }
+    .info-value {
+      font-size: 16px;
+      font-weight: 600;
+      color: #1f2937;
+    }
+    .type-card {
+      background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
+      color: white;
+      padding: 32px;
+      border-radius: 16px;
+      text-align: center;
+      margin-bottom: 24px;
+    }
+    .type-code {
+      font-size: 48px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .type-name {
+      font-size: 24px;
+      opacity: 0.95;
+    }
+    .feature-labels {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+      margin-top: 16px;
+    }
+    .feature-label {
+      background: rgba(255,255,255,0.2);
+      padding: 6px 16px;
+      border-radius: 20px;
+      font-size: 14px;
+    }
+    .chart-container {
+      background: #f8fafc;
+      padding: 24px;
+      border-radius: 12px;
+      margin-bottom: 24px;
+    }
+    .chart-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #374151;
+      margin-bottom: 16px;
+      text-align: center;
+    }
+    canvas {
+      max-width: 100%;
+      height: 300px !important;
+    }
+    .pattern-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 24px;
+    }
+    .pattern-card {
+      background: #f8fafc;
+      padding: 20px;
+      border-radius: 12px;
+    }
+    .pattern-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #374151;
+      margin-bottom: 12px;
+    }
+    .pattern-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .pattern-item:last-child {
+      border-bottom: none;
+    }
+    .pattern-label {
+      color: #6b7280;
+      font-size: 13px;
+    }
+    .pattern-value {
+      font-weight: 600;
+      color: #1f2937;
+    }
+    .potential-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .potential-table th,
+    .potential-table td {
+      padding: 12px 16px;
+      text-align: left;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .potential-table th {
+      background: #f3f4f6;
+      font-weight: 600;
+      font-size: 13px;
+      color: #374151;
+    }
+    .potential-table tr:hover {
+      background: #f8fafc;
+    }
+    .grade-badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .grade-S { background: #fef3c7; color: #92400e; }
+    .grade-A { background: #d1fae5; color: #065f46; }
+    .grade-B { background: #dbeafe; color: #1e40af; }
+    .grade-C { background: #f3f4f6; color: #374151; }
+    .grade-D { background: #fee2e2; color: #991b1b; }
+    .score-bar {
+      width: 100%;
+      height: 8px;
+      background: #e5e7eb;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .score-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #2563eb, #1e40af);
+      border-radius: 4px;
+    }
+    .stress-indicator {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 16px;
+      background: #f8fafc;
+      border-radius: 8px;
+    }
+    .stress-level {
+      font-size: 24px;
+      font-weight: 700;
+    }
+    .stress-HIGH { color: #059669; }
+    .stress-MEDIUM { color: #d97706; }
+    .stress-LOW { color: #dc2626; }
+    .disclaimer {
+      background: #fef3c7;
+      border: 1px solid #f59e0b;
+      border-radius: 8px;
+      padding: 16px;
+      margin-top: 30px;
+      font-size: 12px;
+      color: #92400e;
+    }
+    .disclaimer-title {
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    .footer {
+      margin-top: 40px;
+      padding-top: 20px;
+      border-top: 1px solid #e5e7eb;
+      text-align: center;
+      font-size: 11px;
+      color: #9ca3af;
+    }
+    .reliability-badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .reliability-RELIABLE { background: #d1fae5; color: #065f46; }
+    .reliability-CAUTION { background: #fef3c7; color: #92400e; }
+    .reliability-UNRELIABLE { background: #fee2e2; color: #991b1b; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="header">
+      <div class="header-left">
+        <h1>個人診断レポート</h1>
+        <div class="subtitle">PeopleBooster 性格診断結果</div>
+      </div>
+      <% if (companyLogo) { %>
+        <img src="<%= companyLogo %>" alt="Company Logo" class="logo">
+      <% } %>
+    </div>
+
+    <div class="section">
+      <h2 class="section-title">基本情報</h2>
+      <div class="info-grid">
+        <div class="info-item">
+          <div class="info-label">氏名</div>
+          <div class="info-value"><%= user.fullName %></div>
+        </div>
+        <div class="info-item">
+          <div class="info-label">メールアドレス</div>
+          <div class="info-value"><%= user.email %></div>
+        </div>
+        <% if (user.company) { %>
+        <div class="info-item">
+          <div class="info-label">所属企業</div>
+          <div class="info-value"><%= user.company %></div>
+        </div>
+        <% } %>
+        <% if (user.department) { %>
+        <div class="info-item">
+          <div class="info-label">部署</div>
+          <div class="info-value"><%= user.department %></div>
+        </div>
+        <% } %>
+        <div class="info-item">
+          <div class="info-label">診断完了日</div>
+          <div class="info-value"><%= formatDate(diagnosis.completedAt) %></div>
+        </div>
+        <div class="info-item">
+          <div class="info-label">信頼性</div>
+          <div class="info-value">
+            <span class="reliability-badge reliability-<%= diagnosis.reliabilityStatus %>">
+              <%= diagnosis.reliabilityStatus === 'RELIABLE' ? '信頼性高' : diagnosis.reliabilityStatus === 'CAUTION' ? '要注意' : '信頼性低' %>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2 class="section-title">診断結果サマリー</h2>
+      <div class="type-card">
+        <div class="type-code"><%= diagnosis.typeCode %></div>
+        <div class="type-name"><%= diagnosis.typeName %></div>
+        <% if (diagnosis.featureLabels && Array.isArray(diagnosis.featureLabels)) { %>
+        <div class="feature-labels">
+          <% diagnosis.featureLabels.forEach(function(label) { %>
+            <span class="feature-label"><%= label %></span>
+          <% }); %>
+        </div>
+        <% } %>
+      </div>
+
+      <div class="stress-indicator">
+        <span>ストレス耐性:</span>
+        <span class="stress-level stress-<%= diagnosis.stressTolerance %>">
+          <%= diagnosis.stressTolerance === 'HIGH' ? '高い' : diagnosis.stressTolerance === 'MEDIUM' ? '普通' : '低い' %>
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <% if (includeDetail) { %>
+  <div class="page">
+    <div class="section">
+      <h2 class="section-title">Big Five パーソナリティ分析</h2>
+      <div class="chart-container">
+        <canvas id="bigFiveChart"></canvas>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2 class="section-title">思考・行動パターン</h2>
+      <div class="pattern-grid">
+        <div class="pattern-card">
+          <div class="pattern-title">思考パターン</div>
+          <% if (diagnosis.thinkingPattern && typeof diagnosis.thinkingPattern === 'object') { %>
+            <% Object.entries(diagnosis.thinkingPattern).forEach(function([key, value]) { %>
+              <div class="pattern-item">
+                <span class="pattern-label"><%= key %></span>
+                <span class="pattern-value"><%= value %></span>
+              </div>
+            <% }); %>
+          <% } %>
+        </div>
+        <div class="pattern-card">
+          <div class="pattern-title">行動パターン</div>
+          <% if (diagnosis.behaviorPattern && typeof diagnosis.behaviorPattern === 'object') { %>
+            <% Object.entries(diagnosis.behaviorPattern).forEach(function([key, value]) { %>
+              <div class="pattern-item">
+                <span class="pattern-label"><%= key %></span>
+                <span class="pattern-value"><%= value %></span>
+              </div>
+            <% }); %>
+          <% } %>
+        </div>
+      </div>
+    </div>
+  </div>
+  <% } %>
+
+  <% if (includePotential && potentialScores && potentialScores.length > 0) { %>
+  <div class="page">
+    <div class="section">
+      <h2 class="section-title">活躍可能性スコア</h2>
+      <table class="potential-table">
+        <thead>
+          <tr>
+            <th>職種</th>
+            <th>グレード</th>
+            <th>スコア</th>
+            <th>適性度</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% potentialScores.forEach(function(score) { %>
+            <tr>
+              <td><%= score.jobType %></td>
+              <td>
+                <span class="grade-badge grade-<%= score.grade %>"><%= score.grade %></span>
+              </td>
+              <td><%= score.score %></td>
+              <td>
+                <div class="score-bar">
+                  <div class="score-fill" style="width: <%= score.score %>%"></div>
+                </div>
+              </td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="disclaimer">
+      <div class="disclaimer-title">ご注意（参考情報）</div>
+      <p>本レポートの診断結果はAIによる分析に基づく参考情報です。採用や人事評価の最終判断は、面接やその他の評価方法と組み合わせて総合的に行ってください。本診断結果のみを根拠とした自動的な採否判定は推奨されません。</p>
+    </div>
+  </div>
+  <% } %>
+
+  <div class="footer">
+    <p>生成日時: <%= formatDate(generatedAt, 'YYYY年MM月DD日 HH:mm') %> | 生成者: <%= generatedBy %></p>
+    <p>© <%= new Date().getFullYear() %> PeopleBooster. All rights reserved.</p>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      <% if (includeDetail && diagnosis.bigFive) { %>
+      const bigFiveData = <%= JSON.stringify(diagnosis.bigFive) %>;
+      const ctx = document.getElementById('bigFiveChart').getContext('2d');
+      new Chart(ctx, {
+        type: 'radar',
+        data: {
+          labels: ['開放性', '誠実性', '外向性', '協調性', '情緒安定性'],
+          datasets: [{
+            label: 'Big Five スコア',
+            data: [
+              bigFiveData.openness || 0,
+              bigFiveData.conscientiousness || 0,
+              bigFiveData.extraversion || 0,
+              bigFiveData.agreeableness || 0,
+              100 - (bigFiveData.neuroticism || 0)
+            ],
+            backgroundColor: 'rgba(37, 99, 235, 0.2)',
+            borderColor: 'rgba(37, 99, 235, 1)',
+            borderWidth: 2,
+            pointBackgroundColor: 'rgba(37, 99, 235, 1)',
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            r: {
+              beginAtZero: true,
+              max: 100,
+              ticks: {
+                stepSize: 20
+              }
+            }
+          },
+          plugins: {
+            legend: {
+              display: false
+            }
+          }
+        }
+      });
+      <% } %>
+    });
+  </script>
+</body>
+</html>

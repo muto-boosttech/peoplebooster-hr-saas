@@ -1,0 +1,445 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      skip_approval:
+        description: 'Skip manual approval (emergency only)'
+        required: false
+        default: 'false'
+        type: boolean
+
+env:
+  AWS_REGION: ap-northeast-1
+  ECR_REPOSITORY_BACKEND: peoplebooster-backend
+  ECR_REPOSITORY_FRONTEND: peoplebooster-frontend
+  ECS_CLUSTER: peoplebooster-production
+  ECS_SERVICE_BACKEND: peoplebooster-backend-production
+  ECS_SERVICE_FRONTEND: peoplebooster-frontend-production
+  CONTAINER_NAME_BACKEND: peoplebooster-backend
+  CONTAINER_NAME_FRONTEND: peoplebooster-frontend
+
+jobs:
+  # ============================================
+  # Build and Push Docker Images
+  # ============================================
+  build:
+    name: Build and Push
+    runs-on: ubuntu-latest
+    outputs:
+      backend-image: ${{ steps.build-backend.outputs.image }}
+      frontend-image: ${{ steps.build-frontend.outputs.image }}
+      image-tag: ${{ steps.vars.outputs.image-tag }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set variables
+        id: vars
+        run: |
+          echo "image-tag=prod-${{ github.sha }}" >> $GITHUB_OUTPUT
+          echo "short-sha=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Cache Docker layers
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-prod-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-prod-
+            ${{ runner.os }}-buildx-
+
+      - name: Build and push Backend image
+        id: build-backend
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ steps.vars.outputs.image-tag }}
+        run: |
+          docker buildx build \
+            --cache-from type=local,src=/tmp/.buildx-cache \
+            --cache-to type=local,dest=/tmp/.buildx-cache-new,mode=max \
+            --platform linux/amd64 \
+            --push \
+            --build-arg NODE_ENV=production \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY_BACKEND:$IMAGE_TAG \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY_BACKEND:production-latest \
+            -f ./backend/Dockerfile \
+            ./backend
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY_BACKEND:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Build and push Frontend image
+        id: build-frontend
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ steps.vars.outputs.image-tag }}
+        run: |
+          docker buildx build \
+            --cache-from type=local,src=/tmp/.buildx-cache \
+            --cache-to type=local,dest=/tmp/.buildx-cache-new,mode=max \
+            --platform linux/amd64 \
+            --push \
+            --build-arg NEXT_PUBLIC_API_URL=${{ vars.PRODUCTION_API_URL }} \
+            --build-arg NODE_ENV=production \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY_FRONTEND:$IMAGE_TAG \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY_FRONTEND:production-latest \
+            -f ./frontend/Dockerfile \
+            ./frontend
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY_FRONTEND:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Move cache
+        run: |
+          rm -rf /tmp/.buildx-cache
+          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+
+  # ============================================
+  # Manual Approval
+  # ============================================
+  approval:
+    name: Manual Approval
+    runs-on: ubuntu-latest
+    needs: build
+    if: ${{ github.event.inputs.skip_approval != 'true' }}
+    environment:
+      name: production-approval
+    steps:
+      - name: Approval checkpoint
+        run: |
+          echo "Deployment approved by: ${{ github.actor }}"
+          echo "Image tag: ${{ needs.build.outputs.image-tag }}"
+
+  # ============================================
+  # Deploy to Production
+  # ============================================
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [build, approval]
+    if: always() && needs.build.result == 'success' && (needs.approval.result == 'success' || github.event.inputs.skip_approval == 'true')
+    environment:
+      name: production
+      url: https://peoplebooster.jp
+    outputs:
+      previous-backend-task: ${{ steps.get-current.outputs.backend-task }}
+      previous-frontend-task: ${{ steps.get-current.outputs.frontend-task }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Get current task definitions for rollback
+        id: get-current
+        run: |
+          BACKEND_TASK=$(aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE_BACKEND }} \
+            --query 'services[0].taskDefinition' \
+            --output text)
+          FRONTEND_TASK=$(aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE_FRONTEND }} \
+            --query 'services[0].taskDefinition' \
+            --output text)
+          echo "backend-task=$BACKEND_TASK" >> $GITHUB_OUTPUT
+          echo "frontend-task=$FRONTEND_TASK" >> $GITHUB_OUTPUT
+          echo "Previous Backend Task: $BACKEND_TASK"
+          echo "Previous Frontend Task: $FRONTEND_TASK"
+
+      - name: Download Backend task definition
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition ${{ env.ECS_SERVICE_BACKEND }} \
+            --query taskDefinition > task-definition-backend.json
+
+      - name: Download Frontend task definition
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition ${{ env.ECS_SERVICE_FRONTEND }} \
+            --query taskDefinition > task-definition-frontend.json
+
+      - name: Update Backend task definition with new image
+        id: task-def-backend
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition-backend.json
+          container-name: ${{ env.CONTAINER_NAME_BACKEND }}
+          image: ${{ needs.build.outputs.backend-image }}
+
+      - name: Update Frontend task definition with new image
+        id: task-def-frontend
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition-frontend.json
+          container-name: ${{ env.CONTAINER_NAME_FRONTEND }}
+          image: ${{ needs.build.outputs.frontend-image }}
+
+      - name: Create database backup before migration
+        run: |
+          aws rds create-db-snapshot \
+            --db-instance-identifier ${{ secrets.PRODUCTION_DB_INSTANCE }} \
+            --db-snapshot-identifier peoplebooster-pre-deploy-${{ github.sha }} \
+            --tags Key=Environment,Value=production Key=DeploymentSHA,Value=${{ github.sha }}
+        continue-on-error: true
+
+      - name: Run database migrations
+        run: |
+          TASK_ARN=$(aws ecs run-task \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --task-definition ${{ env.ECS_SERVICE_BACKEND }} \
+            --overrides '{"containerOverrides":[{"name":"${{ env.CONTAINER_NAME_BACKEND }}","command":["npx","prisma","migrate","deploy"]}]}' \
+            --network-configuration "awsvpcConfiguration={subnets=[${{ secrets.PRODUCTION_SUBNET_IDS }}],securityGroups=[${{ secrets.PRODUCTION_SECURITY_GROUP_ID }}],assignPublicIp=DISABLED}" \
+            --query 'tasks[0].taskArn' \
+            --output text)
+          
+          echo "Waiting for migration task to complete..."
+          aws ecs wait tasks-stopped \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --tasks $TASK_ARN
+          
+          EXIT_CODE=$(aws ecs describe-tasks \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --tasks $TASK_ARN \
+            --query 'tasks[0].containers[0].exitCode' \
+            --output text)
+          
+          if [ "$EXIT_CODE" != "0" ]; then
+            echo "Migration failed with exit code: $EXIT_CODE"
+            exit 1
+          fi
+
+      - name: Deploy Backend to Amazon ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ${{ steps.task-def-backend.outputs.task-definition }}
+          service: ${{ env.ECS_SERVICE_BACKEND }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+          wait-for-minutes: 10
+
+      - name: Deploy Frontend to Amazon ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ${{ steps.task-def-frontend.outputs.task-definition }}
+          service: ${{ env.ECS_SERVICE_FRONTEND }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+          wait-for-minutes: 10
+
+      - name: Health check
+        run: |
+          echo "Running health checks..."
+          for i in {1..10}; do
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" ${{ vars.PRODUCTION_API_URL }}/health)
+            if [ "$HTTP_CODE" == "200" ]; then
+              echo "Health check passed!"
+              exit 0
+            fi
+            echo "Health check attempt $i failed (HTTP $HTTP_CODE), retrying..."
+            sleep 10
+          done
+          echo "Health check failed after 10 attempts"
+          exit 1
+
+      - name: Create deployment record
+        run: |
+          aws dynamodb put-item \
+            --table-name peoplebooster-deployments \
+            --item '{
+              "deployment_id": {"S": "${{ github.run_id }}"},
+              "timestamp": {"S": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"},
+              "commit_sha": {"S": "${{ github.sha }}"},
+              "image_tag": {"S": "${{ needs.build.outputs.image-tag }}"},
+              "deployed_by": {"S": "${{ github.actor }}"},
+              "environment": {"S": "production"},
+              "status": {"S": "success"},
+              "previous_backend_task": {"S": "${{ steps.get-current.outputs.backend-task }}"},
+              "previous_frontend_task": {"S": "${{ steps.get-current.outputs.frontend-task }}"}
+            }'
+        continue-on-error: true
+
+  # ============================================
+  # Rollback Job (Manual Trigger)
+  # ============================================
+  rollback:
+    name: Rollback
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: failure() && needs.deploy.result == 'failure'
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Rollback Backend
+        if: needs.deploy.outputs.previous-backend-task != ''
+        run: |
+          echo "Rolling back Backend to: ${{ needs.deploy.outputs.previous-backend-task }}"
+          aws ecs update-service \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service ${{ env.ECS_SERVICE_BACKEND }} \
+            --task-definition ${{ needs.deploy.outputs.previous-backend-task }}
+
+      - name: Rollback Frontend
+        if: needs.deploy.outputs.previous-frontend-task != ''
+        run: |
+          echo "Rolling back Frontend to: ${{ needs.deploy.outputs.previous-frontend-task }}"
+          aws ecs update-service \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service ${{ env.ECS_SERVICE_FRONTEND }} \
+            --task-definition ${{ needs.deploy.outputs.previous-frontend-task }}
+
+      - name: Wait for rollback to complete
+        run: |
+          aws ecs wait services-stable \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE_BACKEND }} ${{ env.ECS_SERVICE_FRONTEND }}
+
+  # ============================================
+  # Slack Notification
+  # ============================================
+  notify:
+    name: Slack Notification
+    runs-on: ubuntu-latest
+    needs: [build, deploy]
+    if: always()
+    steps:
+      - name: Determine status
+        id: status
+        run: |
+          if [ "${{ needs.build.result }}" == "failure" ] || \
+             [ "${{ needs.deploy.result }}" == "failure" ]; then
+            echo "status=failure" >> $GITHUB_OUTPUT
+            echo "color=danger" >> $GITHUB_OUTPUT
+            echo "emoji=:rotating_light:" >> $GITHUB_OUTPUT
+          else
+            echo "status=success" >> $GITHUB_OUTPUT
+            echo "color=good" >> $GITHUB_OUTPUT
+            echo "emoji=:rocket:" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Send Slack notification
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          payload: |
+            {
+              "attachments": [
+                {
+                  "color": "${{ steps.status.outputs.color }}",
+                  "blocks": [
+                    {
+                      "type": "header",
+                      "text": {
+                        "type": "plain_text",
+                        "text": "${{ steps.status.outputs.emoji }} Production Deployment ${{ steps.status.outputs.status == 'success' && 'Succeeded' || 'Failed' }}"
+                      }
+                    },
+                    {
+                      "type": "section",
+                      "fields": [
+                        {
+                          "type": "mrkdwn",
+                          "text": "*Repository:*\n${{ github.repository }}"
+                        },
+                        {
+                          "type": "mrkdwn",
+                          "text": "*Branch:*\n${{ github.ref_name }}"
+                        },
+                        {
+                          "type": "mrkdwn",
+                          "text": "*Commit:*\n<${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}>"
+                        },
+                        {
+                          "type": "mrkdwn",
+                          "text": "*Deployed by:*\n${{ github.actor }}"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "section",
+                      "fields": [
+                        {
+                          "type": "mrkdwn",
+                          "text": "*Build:*\n${{ needs.build.result }}"
+                        },
+                        {
+                          "type": "mrkdwn",
+                          "text": "*Deploy:*\n${{ needs.deploy.result }}"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "actions",
+                      "elements": [
+                        {
+                          "type": "button",
+                          "text": {
+                            "type": "plain_text",
+                            "text": "View Workflow"
+                          },
+                          "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                        },
+                        {
+                          "type": "button",
+                          "text": {
+                            "type": "plain_text",
+                            "text": "View Production"
+                          },
+                          "url": "${{ vars.PRODUCTION_URL }}"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+
+      - name: Send PagerDuty alert on failure
+        if: steps.status.outputs.status == 'failure'
+        run: |
+          curl -X POST https://events.pagerduty.com/v2/enqueue \
+            -H "Content-Type: application/json" \
+            -d '{
+              "routing_key": "${{ secrets.PAGERDUTY_ROUTING_KEY }}",
+              "event_action": "trigger",
+              "dedup_key": "production-deploy-${{ github.run_id }}",
+              "payload": {
+                "summary": "Production deployment failed for PeopleBooster",
+                "severity": "critical",
+                "source": "GitHub Actions",
+                "custom_details": {
+                  "repository": "${{ github.repository }}",
+                  "commit": "${{ github.sha }}",
+                  "actor": "${{ github.actor }}",
+                  "workflow_url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                }
+              }
+            }'
+        continue-on-error: true

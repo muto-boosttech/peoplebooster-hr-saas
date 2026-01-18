@@ -4,7 +4,6 @@ import { config } from './index';
 // Create Redis client
 export const redis = new Redis(config.redis.url, {
   maxRetriesPerRequest: 3,
-  retryDelayOnFailover: 100,
   enableReadyCheck: true,
   lazyConnect: true,
 });
@@ -161,5 +160,8 @@ export const tokenBlacklist = {
     return (await redis.exists(`blacklist:${token}`)) === 1;
   },
 };
+
+// Alias for compatibility
+export const redisClient = redis;
 
 export default redis;

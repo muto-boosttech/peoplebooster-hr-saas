@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>請求書 - <%= invoice.invoiceNumber %></title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Noto Sans JP', 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif;
+      font-size: 12px;
+      line-height: 1.6;
+      color: #333;
+      background: #fff;
+    }
+
+    .invoice {
+      max-width: 210mm;
+      margin: 0 auto;
+      padding: 20mm;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 30px;
+      padding-bottom: 20px;
+      border-bottom: 2px solid #2563eb;
+    }
+
+    .header-left h1 {
+      font-size: 28px;
+      font-weight: bold;
+      color: #2563eb;
+      margin-bottom: 10px;
+    }
+
+    .invoice-number {
+      font-size: 14px;
+      color: #666;
+    }
+
+    .header-right {
+      text-align: right;
+    }
+
+    .company-logo {
+      max-width: 150px;
+      max-height: 60px;
+      margin-bottom: 10px;
+    }
+
+    .company-info {
+      font-size: 11px;
+      color: #666;
+    }
+
+    .parties {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 30px;
+    }
+
+    .party {
+      width: 45%;
+    }
+
+    .party-label {
+      font-size: 11px;
+      color: #666;
+      margin-bottom: 5px;
+    }
+
+    .party-name {
+      font-size: 18px;
+      font-weight: bold;
+      margin-bottom: 10px;
+    }
+
+    .party-name::after {
+      content: ' 御中';
+      font-size: 14px;
+      font-weight: normal;
+    }
+
+    .invoice-details {
+      background: #f8fafc;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 30px;
+    }
+
+    .invoice-details-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 15px;
+    }
+
+    .detail-item {
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .detail-label {
+      color: #666;
+    }
+
+    .detail-value {
+      font-weight: bold;
+    }
+
+    .total-amount {
+      background: linear-gradient(135deg, #2563eb, #1d4ed8);
+      color: white;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 30px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .total-label {
+      font-size: 16px;
+    }
+
+    .total-value {
+      font-size: 28px;
+      font-weight: bold;
+    }
+
+    .line-items {
+      margin-bottom: 30px;
+    }
+
+    .line-items h2 {
+      font-size: 14px;
+      color: #2563eb;
+      margin-bottom: 15px;
+      padding-bottom: 5px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+
+    .line-items-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .line-items-table th {
+      background: #f1f5f9;
+      padding: 10px;
+      text-align: left;
+      font-weight: bold;
+      font-size: 11px;
+      color: #64748b;
+      text-transform: uppercase;
+    }
+
+    .line-items-table td {
+      padding: 12px 10px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+
+    .line-items-table .text-right {
+      text-align: right;
+    }
+
+    .line-items-table .text-center {
+      text-align: center;
+    }
+
+    .summary {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 30px;
+    }
+
+    .summary-table {
+      width: 300px;
+    }
+
+    .summary-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid #e2e8f0;
+    }
+
+    .summary-row.total {
+      font-size: 16px;
+      font-weight: bold;
+      color: #2563eb;
+      border-bottom: 2px solid #2563eb;
+    }
+
+    .payment-info {
+      background: #fef3c7;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 30px;
+    }
+
+    .payment-info h3 {
+      font-size: 12px;
+      color: #92400e;
+      margin-bottom: 10px;
+    }
+
+    .payment-info p {
+      font-size: 11px;
+      color: #78350f;
+      margin-bottom: 5px;
+    }
+
+    .notes {
+      background: #f8fafc;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 30px;
+    }
+
+    .notes h3 {
+      font-size: 12px;
+      color: #64748b;
+      margin-bottom: 10px;
+    }
+
+    .notes p {
+      font-size: 11px;
+      color: #64748b;
+    }
+
+    .footer {
+      text-align: center;
+      padding-top: 20px;
+      border-top: 1px solid #e2e8f0;
+      color: #94a3b8;
+      font-size: 10px;
+    }
+
+    .stamp-area {
+      width: 80px;
+      height: 80px;
+      border: 1px dashed #cbd5e1;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #94a3b8;
+      font-size: 10px;
+    }
+
+    @media print {
+      body {
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="invoice">
+    <div class="header">
+      <div class="header-left">
+        <h1>請求書</h1>
+        <p class="invoice-number">請求書番号: <%= invoice.invoiceNumber %></p>
+      </div>
+      <div class="header-right">
+        <% if (company.logoUrl) { %>
+          <img src="<%= company.logoUrl %>" alt="<%= company.name %>" class="company-logo">
+        <% } %>
+        <div class="company-info">
+          <p>PeopleBooster運営事務局</p>
+          <p>発行日: <%= formatDate(generatedAt) %></p>
+        </div>
+      </div>
+    </div>
+
+    <div class="parties">
+      <div class="party">
+        <p class="party-label">請求先</p>
+        <p class="party-name"><%= company.name %></p>
+      </div>
+      <div class="party" style="text-align: right;">
+        <div class="stamp-area">印</div>
+      </div>
+    </div>
+
+    <div class="total-amount">
+      <span class="total-label">ご請求金額（税込）</span>
+      <span class="total-value">¥<%= invoice.total.toLocaleString() %></span>
+    </div>
+
+    <div class="invoice-details">
+      <div class="invoice-details-grid">
+        <div class="detail-item">
+          <span class="detail-label">請求期間</span>
+          <span class="detail-value"><%= formatDate(invoice.billingPeriodStart) %> 〜 <%= formatDate(invoice.billingPeriodEnd) %></span>
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">お支払期限</span>
+          <span class="detail-value"><%= formatDate(invoice.dueDate) %></span>
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">ステータス</span>
+          <span class="detail-value"><%= invoice.statusDisplayName %></span>
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">発行日</span>
+          <span class="detail-value"><%= formatDate(generatedAt) %></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="line-items">
+      <h2>明細</h2>
+      <table class="line-items-table">
+        <thead>
+          <tr>
+            <th style="width: 50%;">項目</th>
+            <th class="text-center" style="width: 15%;">数量</th>
+            <th class="text-right" style="width: 17.5%;">単価</th>
+            <th class="text-right" style="width: 17.5%;">金額</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% invoice.lineItems.forEach(function(item) { %>
+            <tr>
+              <td><%= item.description %></td>
+              <td class="text-center"><%= item.quantity %></td>
+              <td class="text-right">¥<%= item.unitPrice.toLocaleString() %></td>
+              <td class="text-right">¥<%= item.amount.toLocaleString() %></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="summary">
+      <div class="summary-table">
+        <div class="summary-row">
+          <span>小計</span>
+          <span>¥<%= invoice.subtotal.toLocaleString() %></span>
+        </div>
+        <div class="summary-row">
+          <span>消費税（10%）</span>
+          <span>¥<%= invoice.tax.toLocaleString() %></span>
+        </div>
+        <div class="summary-row total">
+          <span>合計</span>
+          <span>¥<%= invoice.total.toLocaleString() %></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="payment-info">
+      <h3>お支払い方法</h3>
+      <p>下記口座へお振込みください。振込手数料はお客様のご負担となります。</p>
+      <p style="margin-top: 10px;">
+        <strong>銀行名:</strong> ○○銀行 ○○支店<br>
+        <strong>口座種別:</strong> 普通<br>
+        <strong>口座番号:</strong> 1234567<br>
+        <strong>口座名義:</strong> カ）ピープルブースター
+      </p>
+    </div>
+
+    <div class="notes">
+      <h3>備考</h3>
+      <p>本請求書に関するお問い合わせは、billing@peoplebooster.jp までご連絡ください。</p>
+      <p>お支払い期限を過ぎますと、サービスのご利用を一時停止させていただく場合がございます。</p>
+    </div>
+
+    <div class="footer">
+      <p>この請求書は <%= formatDate(generatedAt, 'YYYY/MM/DD HH:mm') %> に生成されました</p>
+      <p>© <%= new Date().getFullYear() %> PeopleBooster. All rights reserved.</p>
+    </div>
+  </div>
+</body>
+</html>

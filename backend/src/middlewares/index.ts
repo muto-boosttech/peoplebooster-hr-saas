@@ -3,11 +3,17 @@ import { ZodSchema, ZodError } from 'zod';
 import { AuthenticatedRequest, JwtPayload, UserRole } from '../types';
 import { verifyToken, errorResponse } from '../utils';
 
+// 認証ミドルウェアをエクスポート
+export * from './auth.middleware';
+
+// 認可ミドルウェアをエクスポート
+export * from './authorize.middleware';
+
 /**
- * Authentication middleware
+ * Authentication middleware (legacy)
  * Verifies JWT token and attaches user to request
  */
-export const authenticate = (
+export const authenticateLegacy = (
   req: AuthenticatedRequest,
   res: Response,
   next: NextFunction
@@ -31,10 +37,11 @@ export const authenticate = (
 };
 
 /**
- * Authorization middleware factory
+ * Authorization middleware factory (legacy)
  * Checks if user has required role(s)
+ * @deprecated Use authorize from './authorize.middleware' instead
  */
-export const authorize = (...allowedRoles: UserRole[]) => {
+export const authorizeLegacy = (...allowedRoles: UserRole[]) => {
   return (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
     if (!req.user) {
       res.status(401).json(errorResponse('Authentication required'));

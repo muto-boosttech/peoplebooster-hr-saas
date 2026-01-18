@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>候補者評価サマリー - <%= candidate.user.fullName %></title>
+  <%- getChartScript() %>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: 'Noto Sans JP', 'Hiragino Kaku Gothic ProN', 'メイリオ', sans-serif;
+      color: #1f2937;
+      line-height: 1.6;
+      background: #fff;
+    }
+    .page {
+      padding: 40px;
+      min-height: 297mm;
+      page-break-after: always;
+    }
+    .page:last-child {
+      page-break-after: avoid;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 40px;
+      padding-bottom: 20px;
+      border-bottom: 3px solid #059669;
+    }
+    .header-left h1 {
+      font-size: 26px;
+      color: #065f46;
+      margin-bottom: 8px;
+    }
+    .header-left .subtitle {
+      font-size: 14px;
+      color: #6b7280;
+    }
+    .logo {
+      max-height: 60px;
+      max-width: 200px;
+    }
+    .section {
+      margin-bottom: 32px;
+    }
+    .section-title {
+      font-size: 18px;
+      color: #065f46;
+      border-left: 4px solid #059669;
+      padding-left: 12px;
+      margin-bottom: 20px;
+      font-weight: 600;
+    }
+    .candidate-card {
+      background: linear-gradient(135deg, #059669 0%, #065f46 100%);
+      color: white;
+      padding: 28px;
+      border-radius: 16px;
+      margin-bottom: 24px;
+    }
+    .candidate-name {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .candidate-position {
+      font-size: 18px;
+      opacity: 0.95;
+      margin-bottom: 16px;
+    }
+    .candidate-meta {
+      display: flex;
+      gap: 24px;
+      flex-wrap: wrap;
+    }
+    .meta-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      opacity: 0.9;
+    }
+    .status-badge {
+      display: inline-block;
+      padding: 6px 16px;
+      border-radius: 20px;
+      font-size: 14px;
+      font-weight: 600;
+      background: rgba(255,255,255,0.2);
+    }
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+    .info-card {
+      background: #f8fafc;
+      padding: 20px;
+      border-radius: 12px;
+      text-align: center;
+    }
+    .info-card-value {
+      font-size: 32px;
+      font-weight: 700;
+      color: #059669;
+      margin-bottom: 4px;
+    }
+    .info-card-label {
+      font-size: 13px;
+      color: #6b7280;
+    }
+    .rating-display {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .rating-stars {
+      color: #f59e0b;
+      font-size: 20px;
+    }
+    .rating-value {
+      font-size: 24px;
+      font-weight: 700;
+      color: #1f2937;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th, td {
+      padding: 12px 16px;
+      text-align: left;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    th {
+      background: #f3f4f6;
+      font-weight: 600;
+      font-size: 13px;
+      color: #374151;
+    }
+    tr:hover {
+      background: #f8fafc;
+    }
+    .interview-status {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .status-SCHEDULED { background: #dbeafe; color: #1e40af; }
+    .status-COMPLETED { background: #d1fae5; color: #065f46; }
+    .status-CANCELLED { background: #fee2e2; color: #991b1b; }
+    .status-NO_SHOW { background: #fef3c7; color: #92400e; }
+    .comment-card {
+      background: #f8fafc;
+      padding: 20px;
+      border-radius: 12px;
+      margin-bottom: 16px;
+    }
+    .comment-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .comment-interviewer {
+      font-weight: 600;
+      color: #374151;
+    }
+    .comment-date {
+      font-size: 13px;
+      color: #6b7280;
+    }
+    .comment-rating {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-bottom: 12px;
+    }
+    .comment-rating .star {
+      color: #f59e0b;
+    }
+    .comment-rating .star.empty {
+      color: #d1d5db;
+    }
+    .comment-text {
+      color: #4b5563;
+      font-size: 14px;
+      line-height: 1.7;
+    }
+    .comment-tags {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+      flex-wrap: wrap;
+    }
+    .comment-tag {
+      background: #e0e7ff;
+      color: #3730a3;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+    }
+    .diagnosis-summary {
+      background: #f8fafc;
+      padding: 24px;
+      border-radius: 12px;
+    }
+    .diagnosis-type {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .type-code {
+      background: #2563eb;
+      color: white;
+      padding: 12px 20px;
+      border-radius: 8px;
+      font-size: 24px;
+      font-weight: 700;
+    }
+    .type-name {
+      font-size: 18px;
+      font-weight: 600;
+      color: #1f2937;
+    }
+    .tags-container {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+    }
+    .candidate-tag {
+      background: #d1fae5;
+      color: #065f46;
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 13px;
+    }
+    .disclaimer {
+      background: #fef3c7;
+      border: 1px solid #f59e0b;
+      border-radius: 8px;
+      padding: 16px;
+      margin-top: 30px;
+      font-size: 12px;
+      color: #92400e;
+    }
+    .disclaimer-title {
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    .footer {
+      margin-top: 40px;
+      padding-top: 20px;
+      border-top: 1px solid #e5e7eb;
+      text-align: center;
+      font-size: 11px;
+      color: #9ca3af;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="header">
+      <div class="header-left">
+        <h1>候補者評価サマリー</h1>
+        <div class="subtitle">PeopleBooster ATS レポート</div>
+      </div>
+      <% if (companyLogo) { %>
+        <img src="<%= companyLogo %>" alt="Company Logo" class="logo">
+      <% } %>
+    </div>
+
+    <div class="candidate-card">
+      <div class="candidate-name"><%= candidate.user.fullName %></div>
+      <div class="candidate-position"><%= candidate.appliedPosition %></div>
+      <div class="candidate-meta">
+        <div class="meta-item">
+          <span class="status-badge"><%= candidate.statusDisplayName %></span>
+        </div>
+        <% if (candidate.source) { %>
+        <div class="meta-item">応募経路: <%= candidate.source %></div>
+        <% } %>
+        <% if (candidate.assignedTo) { %>
+        <div class="meta-item">担当: <%= candidate.assignedTo %></div>
+        <% } %>
+        <div class="meta-item">登録日: <%= formatDate(candidate.createdAt) %></div>
+      </div>
+      <% if (candidate.tags && candidate.tags.length > 0) { %>
+      <div class="tags-container" style="margin-top: 16px;">
+        <% candidate.tags.forEach(function(tag) { %>
+          <span class="candidate-tag" style="background: rgba(255,255,255,0.2); color: white;"><%= tag %></span>
+        <% }); %>
+      </div>
+      <% } %>
+    </div>
+
+    <div class="section">
+      <h2 class="section-title">評価サマリー</h2>
+      <div class="info-grid">
+        <div class="info-card">
+          <div class="info-card-value"><%= summary.totalInterviews %></div>
+          <div class="info-card-label">面接回数</div>
+        </div>
+        <div class="info-card">
+          <div class="info-card-value"><%= summary.completedInterviews %></div>
+          <div class="info-card-label">完了面接</div>
+        </div>
+        <div class="info-card">
+          <div class="info-card-value"><%= summary.totalComments %></div>
+          <div class="info-card-label">コメント数</div>
+        </div>
+        <div class="info-card">
+          <% if (summary.averageRating) { %>
+          <div class="rating-display" style="justify-content: center;">
+            <span class="rating-stars">★</span>
+            <span class="rating-value"><%= summary.averageRating.toFixed(1) %></span>
+          </div>
+          <% } else { %>
+          <div class="info-card-value">-</div>
+          <% } %>
+          <div class="info-card-label">平均評価</div>
+        </div>
+      </div>
+    </div>
+
+    <% if (diagnosis) { %>
+    <div class="section">
+      <h2 class="section-title">診断結果</h2>
+      <div class="diagnosis-summary">
+        <div class="diagnosis-type">
+          <span class="type-code"><%= diagnosis.typeCode %></span>
+          <span class="type-name"><%= diagnosis.typeName %></span>
+        </div>
+        <% if (diagnosis.featureLabels && Array.isArray(diagnosis.featureLabels)) { %>
+        <div class="tags-container">
+          <% diagnosis.featureLabels.forEach(function(label) { %>
+            <span class="candidate-tag" style="background: #e0e7ff; color: #3730a3;"><%= label %></span>
+          <% }); %>
+        </div>
+        <% } %>
+      </div>
+    </div>
+    <% } %>
+  </div>
+
+  <% if (interviews.length > 0) { %>
+  <div class="page">
+    <div class="section">
+      <h2 class="section-title">面接スケジュール</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>日時</th>
+            <th>形式</th>
+            <th>面接官</th>
+            <th>所要時間</th>
+            <th>ステータス</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% interviews.forEach(function(interview) { %>
+            <tr>
+              <td><%= formatDate(interview.scheduledAt, 'YYYY/MM/DD HH:mm') %></td>
+              <td><%= interview.typeDisplayName %></td>
+              <td><%= interview.interviewer %></td>
+              <td><%= interview.duration %>分</td>
+              <td>
+                <span class="interview-status status-<%= interview.status %>">
+                  <%= interview.statusDisplayName %>
+                </span>
+              </td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <% } %>
+
+  <% if (comments.length > 0) { %>
+  <div class="page">
+    <div class="section">
+      <h2 class="section-title">面接コメント</h2>
+      <% comments.forEach(function(comment) { %>
+        <div class="comment-card">
+          <div class="comment-header">
+            <span class="comment-interviewer"><%= comment.interviewer %></span>
+            <span class="comment-date"><%= formatDate(comment.interviewDate, 'YYYY/MM/DD') %></span>
+          </div>
+          <% if (comment.rating) { %>
+          <div class="comment-rating">
+            <% for (var i = 1; i <= 5; i++) { %>
+              <span class="star <%= i <= comment.rating ? '' : 'empty' %>">★</span>
+            <% } %>
+            <span style="margin-left: 8px; font-size: 13px; color: #6b7280;">
+              (<%= comment.ratingDisplayName %>)
+            </span>
+          </div>
+          <% } %>
+          <div class="comment-text"><%= comment.comment %></div>
+          <% if (comment.tags && comment.tags.length > 0) { %>
+          <div class="comment-tags">
+            <% comment.tags.forEach(function(tag) { %>
+              <span class="comment-tag"><%= tag %></span>
+            <% }); %>
+          </div>
+          <% } %>
+        </div>
+      <% }); %>
+    </div>
+
+    <div class="disclaimer">
+      <div class="disclaimer-title">ご注意（参考情報）</div>
+      <p>本レポートに含まれる診断結果はAIによる分析に基づく参考情報です。採用の最終判断は、面接評価やその他の情報と組み合わせて総合的に行ってください。</p>
+    </div>
+  </div>
+  <% } %>
+
+  <div class="footer">
+    <p>生成日時: <%= formatDate(generatedAt, 'YYYY年MM月DD日 HH:mm') %> | 生成者: <%= generatedBy %></p>
+    <p>© <%= new Date().getFullYear() %> PeopleBooster. All rights reserved.</p>
+  </div>
+</body>
+</html>

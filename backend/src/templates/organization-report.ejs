@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>組織傾向分析レポート - <%= company.name %></title>
+  <%- getChartScript() %>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: 'Noto Sans JP', 'Hiragino Kaku Gothic ProN', 'メイリオ', sans-serif;
+      color: #1f2937;
+      line-height: 1.6;
+      background: #fff;
+    }
+    .page {
+      padding: 40px;
+      min-height: 210mm;
+      page-break-after: always;
+    }
+    .page:last-child {
+      page-break-after: avoid;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 40px;
+      padding-bottom: 20px;
+      border-bottom: 3px solid #7c3aed;
+    }
+    .header-left h1 {
+      font-size: 26px;
+      color: #5b21b6;
+      margin-bottom: 8px;
+    }
+    .header-left .subtitle {
+      font-size: 14px;
+      color: #6b7280;
+    }
+    .logo {
+      max-height: 60px;
+      max-width: 200px;
+    }
+    .section {
+      margin-bottom: 32px;
+    }
+    .section-title {
+      font-size: 18px;
+      color: #5b21b6;
+      border-left: 4px solid #7c3aed;
+      padding-left: 12px;
+      margin-bottom: 20px;
+      font-weight: 600;
+    }
+    .company-card {
+      background: linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%);
+      color: white;
+      padding: 28px;
+      border-radius: 16px;
+      margin-bottom: 24px;
+    }
+    .company-name {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .company-meta {
+      font-size: 16px;
+      opacity: 0.9;
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      margin-bottom: 32px;
+    }
+    .stat-card {
+      background: #f8fafc;
+      padding: 24px;
+      border-radius: 12px;
+      text-align: center;
+    }
+    .stat-value {
+      font-size: 40px;
+      font-weight: 700;
+      color: #7c3aed;
+      margin-bottom: 8px;
+    }
+    .stat-label {
+      font-size: 14px;
+      color: #6b7280;
+    }
+    .chart-container {
+      background: #f8fafc;
+      padding: 24px;
+      border-radius: 12px;
+      margin-bottom: 24px;
+    }
+    .chart-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #374151;
+      margin-bottom: 16px;
+      text-align: center;
+    }
+    .chart-row {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 24px;
+    }
+    canvas {
+      max-width: 100%;
+      height: 280px !important;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th, td {
+      padding: 12px 16px;
+      text-align: left;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    th {
+      background: #f3f4f6;
+      font-weight: 600;
+      font-size: 13px;
+      color: #374151;
+    }
+    tr:hover {
+      background: #f8fafc;
+    }
+    .type-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      background: #e0e7ff;
+      color: #3730a3;
+    }
+    .stress-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .stress-HIGH { background: #d1fae5; color: #065f46; }
+    .stress-MEDIUM { background: #fef3c7; color: #92400e; }
+    .stress-LOW { background: #fee2e2; color: #991b1b; }
+    .bigfive-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 16px;
+    }
+    .bigfive-item {
+      background: #f8fafc;
+      padding: 20px;
+      border-radius: 12px;
+      text-align: center;
+    }
+    .bigfive-value {
+      font-size: 28px;
+      font-weight: 700;
+      color: #7c3aed;
+      margin-bottom: 8px;
+    }
+    .bigfive-label {
+      font-size: 13px;
+      color: #6b7280;
+    }
+    .disclaimer {
+      background: #fef3c7;
+      border: 1px solid #f59e0b;
+      border-radius: 8px;
+      padding: 16px;
+      margin-top: 30px;
+      font-size: 12px;
+      color: #92400e;
+    }
+    .disclaimer-title {
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    .footer {
+      margin-top: 40px;
+      padding-top: 20px;
+      border-top: 1px solid #e5e7eb;
+      text-align: center;
+      font-size: 11px;
+      color: #9ca3af;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="header">
+      <div class="header-left">
+        <h1>組織傾向分析レポート</h1>
+        <div class="subtitle">PeopleBooster 組織診断</div>
+      </div>
+      <% if (company.logoUrl) { %>
+        <img src="<%= company.logoUrl %>" alt="Company Logo" class="logo">
+      <% } %>
+    </div>
+
+    <div class="company-card">
+      <div class="company-name"><%= company.name %></div>
+      <div class="company-meta">
+        <% if (targetDepartment) { %>
+          対象部署: <%= targetDepartment %>
+        <% } else { %>
+          全社分析
+        <% } %>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2 class="section-title">概要</h2>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-value"><%= statistics.totalUsers %></div>
+          <div class="stat-label">診断完了者数</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value"><%= Object.keys(statistics.typeDistribution).length %></div>
+          <div class="stat-label">タイプ種類数</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value"><%= Object.keys(statistics.departmentStats).length %></div>
+          <div class="stat-label">部署数</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2 class="section-title">Big Five 組織平均</h2>
+      <div class="bigfive-grid">
+        <div class="bigfive-item">
+          <div class="bigfive-value"><%= (statistics.bigFiveAverages.openness || 0).toFixed(0) %></div>
+          <div class="bigfive-label">開放性</div>
+        </div>
+        <div class="bigfive-item">
+          <div class="bigfive-value"><%= (statistics.bigFiveAverages.conscientiousness || 0).toFixed(0) %></div>
+          <div class="bigfive-label">誠実性</div>
+        </div>
+        <div class="bigfive-item">
+          <div class="bigfive-value"><%= (statistics.bigFiveAverages.extraversion || 0).toFixed(0) %></div>
+          <div class="bigfive-label">外向性</div>
+        </div>
+        <div class="bigfive-item">
+          <div class="bigfive-value"><%= (statistics.bigFiveAverages.agreeableness || 0).toFixed(0) %></div>
+          <div class="bigfive-label">協調性</div>
+        </div>
+        <div class="bigfive-item">
+          <div class="bigfive-value"><%= (100 - (statistics.bigFiveAverages.neuroticism || 0)).toFixed(0) %></div>
+          <div class="bigfive-label">情緒安定性</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="page">
+    <div class="section">
+      <h2 class="section-title">タイプ分布・ストレス耐性分布</h2>
+      <div class="chart-row">
+        <div class="chart-container">
+          <div class="chart-title">性格タイプ分布</div>
+          <canvas id="typeChart"></canvas>
+        </div>
+        <div class="chart-container">
+          <div class="chart-title">ストレス耐性分布</div>
+          <canvas id="stressChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2 class="section-title">部署別統計</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>部署名</th>
+            <th>人数</th>
+            <th>主要タイプ</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% Object.entries(statistics.departmentStats).forEach(function([deptName, stats]) { %>
+            <tr>
+              <td><%= deptName %></td>
+              <td><%= stats.count %>名</td>
+              <td>
+                <% 
+                  var sortedTypes = Object.entries(stats.types).sort((a, b) => b[1] - a[1]);
+                  var topTypes = sortedTypes.slice(0, 3);
+                  topTypes.forEach(function([type, count], index) { 
+                %>
+                  <span class="type-badge"><%= type %> (<%= count %>)</span>
+                <% }); %>
+              </td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="disclaimer">
+      <div class="disclaimer-title">ご注意（参考情報）</div>
+      <p>本レポートの分析結果はAIによる診断データの集計に基づく参考情報です。組織開発や人事施策の検討材料としてご活用ください。個人の評価や処遇決定に直接使用することは推奨されません。</p>
+    </div>
+  </div>
+
+  <div class="footer">
+    <p>生成日時: <%= formatDate(generatedAt, 'YYYY年MM月DD日 HH:mm') %> | 生成者: <%= generatedBy %></p>
+    <p>© <%= new Date().getFullYear() %> PeopleBooster. All rights reserved.</p>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      // タイプ分布チャート
+      const typeData = <%= JSON.stringify(statistics.typeDistribution) %>;
+      const typeLabels = Object.keys(typeData);
+      const typeValues = Object.values(typeData);
+      
+      new Chart(document.getElementById('typeChart').getContext('2d'), {
+        type: 'doughnut',
+        data: {
+          labels: typeLabels,
+          datasets: [{
+            data: typeValues,
+            backgroundColor: [
+              '#7c3aed', '#2563eb', '#059669', '#d97706', '#dc2626',
+              '#8b5cf6', '#3b82f6', '#10b981', '#f59e0b', '#ef4444',
+              '#a78bfa', '#60a5fa', '#34d399', '#fbbf24', '#f87171'
+            ],
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'right',
+              labels: {
+                boxWidth: 12,
+                padding: 8,
+                font: { size: 11 }
+              }
+            }
+          }
+        }
+      });
+
+      // ストレス耐性分布チャート
+      const stressData = <%= JSON.stringify(statistics.stressToleranceDistribution) %>;
+      const stressLabels = {
+        'HIGH': '高い',
+        'MEDIUM': '普通',
+        'LOW': '低い'
+      };
+      
+      new Chart(document.getElementById('stressChart').getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels: Object.keys(stressData).map(k => stressLabels[k] || k),
+          datasets: [{
+            label: '人数',
+            data: Object.values(stressData),
+            backgroundColor: ['#059669', '#d97706', '#dc2626'],
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              display: false
+            }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: {
+                stepSize: 1
+              }
+            }
+          }
+        }
+      });
+    });
+  </script>
+</body>
+</html>

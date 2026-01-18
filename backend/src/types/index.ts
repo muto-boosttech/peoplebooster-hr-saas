@@ -1,41 +1,44 @@
 import { Request } from 'express';
 
-// User Roles
+// 認可関連の型定義をエクスポート
+export * from './auth.types';
+
+// User Roles (legacy - use UserRole from @prisma/client or auth.types instead)
 export enum UserRole {
-  SYSTEM_ADMIN = 'system_admin',
-  COMPANY_ADMIN = 'company_admin',
-  COMPANY_USER = 'company_user',
-  GENERAL_USER = 'general_user',
+  SYSTEM_ADMIN = 'SYSTEM_ADMIN',
+  COMPANY_ADMIN = 'COMPANY_ADMIN',
+  COMPANY_USER = 'COMPANY_USER',
+  GENERAL_USER = 'GENERAL_USER',
 }
 
-// Sub User Permission
+// Sub User Permission (legacy - use SubUserPermission from @prisma/client or auth.types instead)
 export enum SubUserPermission {
-  VIEW_ONLY = 'view_only',
-  EDIT = 'edit',
-  FULL = 'full',
+  VIEW_ONLY = 'VIEW_ONLY',
+  EDIT = 'EDIT',
+  FULL = 'FULL',
 }
 
 // Candidate Status
 export enum CandidateStatus {
-  NOT_STARTED = 'not_started',
-  IN_PROGRESS = 'in_progress',
-  COMPLETED = 'completed',
-  DOCUMENT_REVIEW = 'document_review',
-  FIRST_INTERVIEW = 'first_interview',
-  SECOND_INTERVIEW = 'second_interview',
-  FINAL_INTERVIEW = 'final_interview',
-  OFFER = 'offer',
-  HIRED = 'hired',
-  REJECTED = 'rejected',
-  WITHDRAWN = 'withdrawn',
-  ON_HOLD = 'on_hold',
+  UNTOUCHED = 'UNTOUCHED',
+  IN_PROGRESS = 'IN_PROGRESS',
+  COMPLETED = 'COMPLETED',
+  DOCUMENT_SCREENING = 'DOCUMENT_SCREENING',
+  FIRST_INTERVIEW = 'FIRST_INTERVIEW',
+  SECOND_INTERVIEW = 'SECOND_INTERVIEW',
+  FINAL_INTERVIEW = 'FINAL_INTERVIEW',
+  OFFER = 'OFFER',
+  HIRED = 'HIRED',
+  REJECTED = 'REJECTED',
+  WITHDRAWN = 'WITHDRAWN',
+  ON_HOLD = 'ON_HOLD',
 }
 
 // Stress Tolerance Level
 export enum StressToleranceLevel {
-  HIGH = 'high',
-  MEDIUM = 'medium',
-  LOW = 'low',
+  HIGH = 'HIGH',
+  MEDIUM = 'MEDIUM',
+  LOW = 'LOW',
 }
 
 // Potential Score Grade
@@ -52,6 +55,9 @@ export interface JwtPayload {
   email: string;
   role: UserRole;
   companyId?: string;
+  departmentId?: string;
+  parentUserId?: string;
+  subUserPermission?: SubUserPermission;
   iat?: number;
   exp?: number;
 }

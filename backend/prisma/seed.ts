@@ -563,7 +563,7 @@ async function main() {
       diagnosisResultId: diagnosisResult.id,
       version: 'v1.1',
       triggerType: BrushUpTriggerType.MBTI_ADDED,
-      triggerSourceId: mbtiDiagnosis.id,
+      triggerSourceId: null,
       previousData: {
         featureLabels: ['権力的', 'アイドル性', '不動心', '顧客志向'],
       },

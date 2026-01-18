@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>採用活動サマリーレポート - <%= company.name %></title>
+  <%- getChartScript() %>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: 'Noto Sans JP', 'Hiragino Kaku Gothic ProN', 'メイリオ', sans-serif;
+      color: #1f2937;
+      line-height: 1.6;
+      background: #fff;
+    }
+    .page {
+      padding: 40px;
+      min-height: 297mm;
+      page-break-after: always;
+    }
+    .page:last-child {
+      page-break-after: avoid;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 40px;
+      padding-bottom: 20px;
+      border-bottom: 3px solid #dc2626;
+    }
+    .header-left h1 {
+      font-size: 26px;
+      color: #991b1b;
+      margin-bottom: 8px;
+    }
+    .header-left .subtitle {
+      font-size: 14px;
+      color: #6b7280;
+    }
+    .logo {
+      max-height: 60px;
+      max-width: 200px;
+    }
+    .section {
+      margin-bottom: 32px;
+    }
+    .section-title {
+      font-size: 18px;
+      color: #991b1b;
+      border-left: 4px solid #dc2626;
+      padding-left: 12px;
+      margin-bottom: 20px;
+      font-weight: 600;
+    }
+    .period-card {
+      background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
+      color: white;
+      padding: 28px;
+      border-radius: 16px;
+      margin-bottom: 24px;
+    }
+    .period-title {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .period-range {
+      font-size: 16px;
+      opacity: 0.9;
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+    .stat-card {
+      background: #f8fafc;
+      padding: 20px;
+      border-radius: 12px;
+      text-align: center;
+    }
+    .stat-value {
+      font-size: 36px;
+      font-weight: 700;
+      color: #dc2626;
+      margin-bottom: 4px;
+    }
+    .stat-label {
+      font-size: 13px;
+      color: #6b7280;
+    }
+    .funnel-container {
+      background: #f8fafc;
+      padding: 24px;
+      border-radius: 12px;
+      margin-bottom: 24px;
+    }
+    .funnel-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #374151;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+    .funnel-stages {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .funnel-stage {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .funnel-label {
+      width: 120px;
+      font-size: 13px;
+      color: #374151;
+      text-align: right;
+    }
+    .funnel-bar-container {
+      flex: 1;
+      height: 32px;
+      background: #e5e7eb;
+      border-radius: 4px;
+      overflow: hidden;
+      position: relative;
+    }
+    .funnel-bar {
+      height: 100%;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      padding-right: 12px;
+      color: white;
+      font-weight: 600;
+      font-size: 13px;
+      min-width: 40px;
+    }
+    .funnel-bar.total { background: #dc2626; }
+    .funnel-bar.progress { background: #f59e0b; }
+    .funnel-bar.interview { background: #2563eb; }
+    .funnel-bar.offer { background: #7c3aed; }
+    .funnel-bar.hired { background: #059669; }
+    .chart-row {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 24px;
+    }
+    .chart-container {
+      background: #f8fafc;
+      padding: 24px;
+      border-radius: 12px;
+    }
+    .chart-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #374151;
+      margin-bottom: 16px;
+      text-align: center;
+    }
+    canvas {
+      max-width: 100%;
+      height: 250px !important;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th, td {
+      padding: 10px 12px;
+      text-align: left;
+      border-bottom: 1px solid #e5e7eb;
+      font-size: 13px;
+    }
+    th {
+      background: #f3f4f6;
+      font-weight: 600;
+      color: #374151;
+    }
+    tr:hover {
+      background: #f8fafc;
+    }
+    .status-badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .status-UNTOUCHED { background: #f3f4f6; color: #374151; }
+    .status-IN_PROGRESS { background: #dbeafe; color: #1e40af; }
+    .status-COMPLETED { background: #d1fae5; color: #065f46; }
+    .status-DOCUMENT_SCREENING { background: #fef3c7; color: #92400e; }
+    .status-FIRST_INTERVIEW,
+    .status-SECOND_INTERVIEW,
+    .status-FINAL_INTERVIEW { background: #e0e7ff; color: #3730a3; }
+    .status-OFFER { background: #ede9fe; color: #5b21b6; }
+    .status-HIRED { background: #d1fae5; color: #065f46; }
+    .status-REJECTED { background: #fee2e2; color: #991b1b; }
+    .status-WITHDRAWN { background: #fef3c7; color: #92400e; }
+    .status-ON_HOLD { background: #f3f4f6; color: #374151; }
+    .interview-stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+    .interview-stat {
+      background: #f8fafc;
+      padding: 16px;
+      border-radius: 8px;
+      text-align: center;
+    }
+    .interview-stat-value {
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .interview-stat-label {
+      font-size: 12px;
+      color: #6b7280;
+    }
+    .disclaimer {
+      background: #fef3c7;
+      border: 1px solid #f59e0b;
+      border-radius: 8px;
+      padding: 16px;
+      margin-top: 30px;
+      font-size: 12px;
+      color: #92400e;
+    }
+    .disclaimer-title {
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    .footer {
+      margin-top: 40px;
+      padding-top: 20px;
+      border-top: 1px solid #e5e7eb;
+      text-align: center;
+      font-size: 11px;
+      color: #9ca3af;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="header">
+      <div class="header-left">
+        <h1>採用活動サマリーレポート</h1>
+        <div class="subtitle">PeopleBooster ATS 分析</div>
+      </div>
+      <% if (company.logoUrl) { %>
+        <img src="<%= company.logoUrl %>" alt="Company Logo" class="logo">
+      <% } %>
+    </div>
+
+    <div class="period-card">
+      <div class="period-title"><%= company.name %></div>
+      <div class="period-range">
+        集計期間: <%= formatDate(period.startDate) %> 〜 <%= formatDate(period.endDate) %>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2 class="section-title">採用活動概要</h2>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-value"><%= summary.totalCandidates %></div>
+          <div class="stat-label">総候補者数</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value"><%= summary.funnel.hired %></div>
+          <div class="stat-label">採用決定</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value"><%= summary.funnel.rejected %></div>
+          <div class="stat-label">不採用</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value"><%= summary.funnel.withdrawn %></div>
+          <div class="stat-label">辞退</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2 class="section-title">採用ファネル</h2>
+      <div class="funnel-container">
+        <% 
+          var maxValue = summary.funnel.total || 1;
+          var stages = [
+            { label: '応募', value: summary.funnel.total, class: 'total' },
+            { label: '選考中', value: summary.funnel.inProgress, class: 'progress' },
+            { label: '面接', value: summary.funnel.interviewing, class: 'interview' },
+            { label: '内定', value: summary.funnel.offered, class: 'offer' },
+            { label: '採用', value: summary.funnel.hired, class: 'hired' }
+          ];
+        %>
+        <div class="funnel-stages">
+          <% stages.forEach(function(stage) { %>
+            <div class="funnel-stage">
+              <div class="funnel-label"><%= stage.label %></div>
+              <div class="funnel-bar-container">
+                <div class="funnel-bar <%= stage.class %>" style="width: <%= Math.max((stage.value / maxValue) * 100, 5) %>%">
+                  <%= stage.value %>
+                </div>
+              </div>
+            </div>
+          <% }); %>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2 class="section-title">面接統計</h2>
+      <div class="interview-stats">
+        <div class="interview-stat">
+          <div class="interview-stat-value" style="color: #2563eb;"><%= summary.interviewStats.total %></div>
+          <div class="interview-stat-label">総面接数</div>
+        </div>
+        <div class="interview-stat">
+          <div class="interview-stat-value" style="color: #059669;"><%= summary.interviewStats.completed %></div>
+          <div class="interview-stat-label">完了</div>
+        </div>
+        <div class="interview-stat">
+          <div class="interview-stat-value" style="color: #dc2626;"><%= summary.interviewStats.cancelled %></div>
+          <div class="interview-stat-label">キャンセル</div>
+        </div>
+        <div class="interview-stat">
+          <div class="interview-stat-value" style="color: #f59e0b;"><%= summary.interviewStats.noShow %></div>
+          <div class="interview-stat-label">欠席</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="page">
+    <div class="section">
+      <h2 class="section-title">ポジション別・応募経路別分析</h2>
+      <div class="chart-row">
+        <div class="chart-container">
+          <div class="chart-title">ポジション別応募数</div>
+          <canvas id="positionChart"></canvas>
+        </div>
+        <div class="chart-container">
+          <div class="chart-title">応募経路別</div>
+          <canvas id="sourceChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2 class="section-title">ステータス別内訳</h2>
+      <div class="chart-container" style="max-width: 500px; margin: 0 auto;">
+        <canvas id="statusChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <% if (candidates && candidates.length > 0) { %>
+  <div class="page">
+    <div class="section">
+      <h2 class="section-title">候補者一覧</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>氏名</th>
+            <th>ポジション</th>
+            <th>ステータス</th>
+            <th>応募経路</th>
+            <th>面接</th>
+            <th>登録日</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% candidates.forEach(function(candidate) { %>
+            <tr>
+              <td><%= candidate.name %></td>
+              <td><%= candidate.position %></td>
+              <td>
+                <span class="status-badge status-<%= candidate.status %>">
+                  <%= candidate.statusDisplayName %>
+                </span>
+              </td>
+              <td><%= candidate.source || '-' %></td>
+              <td><%= candidate.interviewCount %>回</td>
+              <td><%= formatDate(candidate.createdAt, 'YYYY/MM/DD') %></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="disclaimer">
+      <div class="disclaimer-title">ご注意</div>
+      <p>本レポートは指定期間内の採用活動データを集計したものです。採用戦略の検討や改善にご活用ください。</p>
+    </div>
+  </div>
+  <% } %>
+
+  <div class="footer">
+    <p>生成日時: <%= formatDate(generatedAt, 'YYYY年MM月DD日 HH:mm') %> | 生成者: <%= generatedBy %></p>
+    <p>© <%= new Date().getFullYear() %> PeopleBooster. All rights reserved.</p>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      // ポジション別チャート
+      const positionData = <%= JSON.stringify(summary.positionCounts) %>;
+      new Chart(document.getElementById('positionChart').getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels: Object.keys(positionData),
+          datasets: [{
+            label: '応募数',
+            data: Object.values(positionData),
+            backgroundColor: '#dc2626',
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          indexAxis: 'y',
+          plugins: {
+            legend: { display: false }
+          }
+        }
+      });
+
+      // 応募経路チャート
+      const sourceData = <%= JSON.stringify(summary.sourceCounts) %>;
+      new Chart(document.getElementById('sourceChart').getContext('2d'), {
+        type: 'doughnut',
+        data: {
+          labels: Object.keys(sourceData),
+          datasets: [{
+            data: Object.values(sourceData),
+            backgroundColor: ['#dc2626', '#f59e0b', '#2563eb', '#059669', '#7c3aed', '#ec4899'],
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'right',
+              labels: { boxWidth: 12, padding: 8, font: { size: 11 } }
+            }
+          }
+        }
+      });
+
+      // ステータス別チャート
+      const statusData = <%= JSON.stringify(summary.statusCounts) %>;
+      const statusLabels = {
+        'UNTOUCHED': '未着手',
+        'IN_PROGRESS': '診断中',
+        'COMPLETED': '診断完了',
+        'DOCUMENT_SCREENING': '書類選考',
+        'FIRST_INTERVIEW': '一次面接',
+        'SECOND_INTERVIEW': '二次面接',
+        'FINAL_INTERVIEW': '最終面接',
+        'OFFER': '内定',
+        'HIRED': '採用',
+        'REJECTED': '不採用',
+        'WITHDRAWN': '辞退',
+        'ON_HOLD': '保留'
+      };
+      new Chart(document.getElementById('statusChart').getContext('2d'), {
+        type: 'pie',
+        data: {
+          labels: Object.keys(statusData).map(k => statusLabels[k] || k),
+          datasets: [{
+            data: Object.values(statusData),
+            backgroundColor: [
+              '#9ca3af', '#3b82f6', '#10b981', '#f59e0b',
+              '#6366f1', '#8b5cf6', '#a855f7', '#ec4899',
+              '#059669', '#dc2626', '#f97316', '#6b7280'
+            ],
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'right',
+              labels: { boxWidth: 12, padding: 6, font: { size: 10 } }
+            }
+          }
+        }
+      });
+    });
+  </script>
+</body>
+</html>
