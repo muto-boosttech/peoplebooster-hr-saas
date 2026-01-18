@@ -3,11 +3,48 @@ import { ZodSchema, ZodError } from 'zod';
 import { AuthenticatedRequest, JwtPayload, UserRole } from '../types';
 import { verifyToken, errorResponse } from '../utils';
 
-// 認証ミドルウェアをエクスポート
-export * from './auth.middleware';
+// 認証ミドルウェアをエクスポート（重複を避けるため名前付きでエクスポート）
+export {
+  authenticate,
+  optionalAuthenticate,
+  requireRole,
+  requireMfaVerified,
+  getClientIp,
+  getUserAgent,
+} from './auth.middleware';
+
+// auth.middlewareの特定の関数を別名でエクスポート
+export {
+  requireSystemAdmin as requireSystemAdminAuth,
+  requireCompanyAdmin,
+  requireCompanyUser,
+  requireSameCompany as requireSameCompanyAuth,
+  requireSelfOrAdmin as requireSelfOrAdminAuth,
+} from './auth.middleware';
 
 // 認可ミドルウェアをエクスポート
-export * from './authorize.middleware';
+export {
+  authorize,
+  requireSystemAdmin,
+  requireCompanyAdminOrHigher,
+  authorizeWithCheck,
+  authorizeWithAsyncCheck,
+  authorizeViewCompanies,
+  authorizeManageUser,
+  authorizeDiagnosisView,
+  authorizeCandidateManagement,
+  authorizeRoleChange,
+  authorizeCompanyManagement,
+  authorizeDepartmentManagement,
+  authorizeInvoiceView,
+  authorizeInvoiceIssue,
+  authorizeAuditLogView,
+  authorizeInterviewManagement,
+  authorizePlanManagement,
+  authorizeDataExport,
+  requireSelfOrAdmin,
+  requireSameCompany,
+} from './authorize.middleware';
 
 /**
  * Authentication middleware (legacy)

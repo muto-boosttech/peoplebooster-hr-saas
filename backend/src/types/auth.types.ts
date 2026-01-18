@@ -88,7 +88,7 @@ export type PermissionCheckFunction<T = unknown> = (
   user: AuthUser,
   target?: T,
   operation?: OperationType
-) => boolean | Promise<boolean>;
+) => boolean | Promise<boolean> | PermissionCheckResult;
 
 /**
  * 非同期権限チェック関数の型
@@ -167,6 +167,9 @@ export interface AuthenticatedUser {
 import { Request } from 'express';
 export interface AuthenticatedRequest extends Request {
   user: AuthUser;
+  params: Record<string, string>;
+  query: Record<string, string | string[] | undefined>;
+  body: Record<string, unknown>;
 }
 
 /**
