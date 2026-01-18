@@ -44,7 +44,7 @@ module.exports = {
 
     // Import
     'import/order': [
-      'error',
+      'warn',
       {
         groups: [
           'builtin',
